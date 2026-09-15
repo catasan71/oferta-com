@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   X,
   Check,
@@ -7,11 +7,12 @@ import {
   Loader2,
   ExternalLink,
   Zap,
-  ArrowLeft,
+  ArrowRight,
   FileCheck2,
   QrCode,
   Clock,
   Sparkles,
+  ArrowUpRight,
 } from 'lucide-react';
 import { Organization, SubscriptionPlan, ProformaInvoice } from '../types.ts';
 import {
@@ -37,11 +38,11 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
 }) => {
   // Stări flux:
   // 1. BILLING: Date de facturare & alegere pachet (45 / 100 lei)
-  // 2. AWAITING_PAYMENT: Clientul a fost redirecționat către Revolut; așteptăm efectuarea efectivă a plății
-  // 3. SUCCESS: Plata este finalizată -> Se emite factura fiscală & se activează pachetul
+  // 2. AWAITING_PAYMENT: Clientul este direcționat către Revolut; așteptăm plata efectivă
+  // 3. SUCCESS: Plata este confirmată -> Se emite factura fiscală & se activează pachetul
   const [step, setStep] = useState<'BILLING' | 'AWAITING_PAYMENT' | 'SUCCESS'>('BILLING');
 
-  // Prețuri pachete conforme cu OfferFlow
+  // Prețuri conforme cu OfferFlow
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>(
     initialSelectedPlan === 'CLASIC' ? 'CLASIC' : 'STARTER'
   );
@@ -74,13 +75,46 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
   };
 
   /**
-   * PASUL 1 -> PASUL 2: Inițiere comandă Revolut & Deschidere Pagina Oficială de Plată
+   * PASUL 1 -> PASUL 2: Inițiere comandă Revolut & Deschidere Garantată a Paginii Oficiale de Plată
    */
   const handleLaunchRevolutCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!denumire.trim() || !email.trim() || !adresa.trim()) {
       alert('Vă rugăm să completați câmpurile obligatorii de facturare (Nume/Companie, Email, Adresă).');
       return;
+    }
+
+    // Deschidem tab-ul sincron pentru a evita blocarea de către browser popup-blockers
+    let paymentWindow: Window | null = null;
+    try {
+      paymentWindow = window.open('', '_blank');
+      if (paymentWindow) {
+        paymentWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <title>Se deschide Revolut Checkout...</title>
+              <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f9fafb; color: #111; }
+                .card { text-align: center; background: white; padding: 32px; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); max-width: 380px; }
+                .spinner { width: 36px; height: 36px; border: 3px solid #e5e7eb; border-top-color: #191c1f; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 16px; }
+                @keyframes spin { to { transform: rotate(360deg); } }
+              </style>
+            </head>
+            <body>
+              <div class="card">
+                <div class="spinner"></div>
+                <h2 style="font-size: 18px; margin: 0 0 8px;">Conectare la Revolut Business...</h2>
+                <p style="font-size: 13px; color: #6b7280; margin: 0;">Se inițiază plata securizată de ${amount} RON.</p>
+              </div>
+            </body>
+          </html>
+        `);
+      }
+    } catch {
+      // Ignorare
     }
 
     setIsProcessing(true);
@@ -115,13 +149,22 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
       setCheckoutUrl(activeUrl);
       setOrderId(activeId);
 
-      // Deschidem direct pagina oficială Revolut Checkout (unde Revolut emite QR-ul și Apple/GPay)
-      window.open(activeUrl, '_blank', 'noopener,noreferrer');
+      // Redirecționăm tab-ul deja deschis către URL-ul final Revolut
+      if (paymentWindow && !paymentWindow.closed) {
+        paymentWindow.location.href = activeUrl;
+      } else {
+        // Fallback dacă popup-ul a fost complet refuzat
+        window.open(activeUrl, '_blank', 'noopener,noreferrer');
+      }
 
       // Trecem în starea de așteptare a plății (Factura NU este emisă încă!)
       setStep('AWAITING_PAYMENT');
     } catch (err) {
       console.error('Eroare inițiere plată:', err);
+      if (paymentWindow && !paymentWindow.closed) {
+        paymentWindow.location.href = `https://revolut.me/catalinsandu07?amount=${amount}&currency=RON`;
+      }
+      setStep('AWAITING_PAYMENT');
     } finally {
       setIsProcessing(false);
     }
@@ -371,7 +414,7 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
               <div className="text-[11px] text-slate-500 bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-start gap-2">
                 <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                 <span>
-                  Plata se efectuează securizat către <strong>{OPERATOR_PROVIDER_INFO.nume}</strong> (CUI: {OPERATOR_PROVIDER_INFO.cui}, Craiova) pe pagina oficială Revolut Checkout. Factura fiscală se emite automat după plată.
+                  Plata se efectuează direct către <strong>{OPERATOR_PROVIDER_INFO.nume}</strong> pe pagina oficială Revolut Checkout (Revolut Pay, Apple Pay, Google Pay, Card).
                 </span>
               </div>
 
@@ -389,8 +432,8 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                   )}
                   <span>
                     {isProcessing
-                      ? 'Se conectează la Revolut...'
-                      : `Plătește ${amount} RON prin Revolut (Deschide Checkout)`}
+                      ? 'Se deschide Revolut Checkout...'
+                      : `Plătește ${amount} RON prin Revolut Checkout`}
                   </span>
                   <ExternalLink className="w-4 h-4 opacity-75" />
                 </button>
@@ -424,7 +467,7 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
               </button>
             </div>
 
-            <div className="py-4 space-y-3">
+            <div className="py-2 space-y-3">
               <div className="w-16 h-16 rounded-3xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center mx-auto shadow-inner">
                 <QrCode className="w-8 h-8 animate-pulse" />
               </div>
@@ -443,10 +486,10 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                     href={checkoutUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-900 font-bold text-xs rounded-xl transition-all"
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-[#191c1f] hover:bg-black text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md"
                   >
-                    <span>Deschide din nou pagina Revolut Checkout</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>🔗 Deschide Pagina de Plată Revolut ({amount} lei)</span>
+                    <ArrowUpRight className="w-4 h-4 text-amber-300" />
                   </a>
                 </div>
               )}
