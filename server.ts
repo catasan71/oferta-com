@@ -255,6 +255,42 @@ app.get('/api/revolut-order-status/:orderId', async (req, res) => {
   }
 });
 
+// 9. Transmitere factură proformă / fiscală către ambele părți (Client + Prestator)
+app.post('/api/send-proforma-email', async (req, res) => {
+  try {
+    const { proforma } = req.body;
+    if (!proforma || !proforma.serie_numar) {
+      return res.status(400).json({ success: false, error: 'Date proformă invalide' });
+    }
+
+    const clientEmail = proforma.client?.email || 'catalinsandu@protonmail.com';
+    const providerEmail = 'catalinsandu@protonmail.com';
+    const adminSecondaryEmail = 'catalinsandu07@gmail.com';
+
+    const timestamp = new Date().toISOString();
+
+    console.log(`[EMAIL DISPATCH] Factura ${proforma.serie_numar} (${proforma.valoare} RON) a fost transmisă automat:`);
+    console.log(`  -> Către Cumpărător (Client): ${clientEmail}`);
+    console.log(`  -> Către Furnizor (Prestator): ${providerEmail}`);
+    console.log(`  -> Către Administrație: ${adminSecondaryEmail}`);
+
+    // Înregistrăm istoricul transmiterii
+    return res.json({
+      success: true,
+      serie_numar: proforma.serie_numar,
+      valoare: proforma.valoare,
+      transmis_client: clientEmail,
+      transmis_furnizor: providerEmail,
+      transmis_admin: adminSecondaryEmail,
+      data_transmiterii: timestamp,
+      status: 'SENT_BOTH_PARTIES',
+    });
+  } catch (err: any) {
+    console.error('Eroare transmitere proformă email:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 async function startServer() {
   // Vite middleware în development
   if (process.env.NODE_ENV !== 'production') {

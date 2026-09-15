@@ -229,12 +229,11 @@ export function App() {
     ) {
       return 'PUBLIC_VIEW';
     }
-    // Altfel, dacă utilizatorul este deja logat, intră direct în Dashboard
-    try {
-      const savedUser = localStorage.getItem('offerflow_current_user');
-      if (savedUser) return 'DASHBOARD';
-    } catch (e) {}
-    // Vizitatorii neautentificați văd Landing Page-ul clasic B2B SaaS
+    // Dacă URL-ul solicită explicit dashboard-ul prin hash sau query parameter
+    if (hash.includes('#dashboard') || searchParams.has('dashboard') || searchParams.get('view') === 'dashboard') {
+      return 'DASHBOARD';
+    }
+    // Implicit: orice accesare directă (inclusiv https://oferta-com-nine.vercel.app/) deschide întotdeauna în LANDING PAGE
     return 'LANDING';
   });
   
@@ -502,6 +501,8 @@ export function App() {
       {/* 1. VEDERE LANDING PAGE PENTRU VIZITATORI / PREZENTARE */}
       {currentView === 'LANDING' ? (
         <LandingPage
+          currentUser={currentUser}
+          onGoToDashboard={() => setCurrentView('DASHBOARD')}
           onOpenAuth={handleOpenAuth}
           onExploreDemo={handleExploreDemo}
           onOpenLegal={handleOpenLegal}

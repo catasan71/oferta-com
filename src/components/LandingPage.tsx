@@ -25,10 +25,13 @@ import {
   Users,
   Building,
 } from 'lucide-react';
-import { PLAN_LIMITS, SubscriptionPlan } from '../types.ts';
+import { PLAN_LIMITS, SubscriptionPlan, User } from '../types.ts';
 import { LegalTab } from './LegalModal.tsx';
+import { HeroQuotePreview } from './HeroQuotePreview.tsx';
 
 interface LandingPageProps {
+  currentUser?: User | null;
+  onGoToDashboard?: () => void;
   onOpenAuth: (mode: 'LOGIN' | 'REGISTER') => void;
   onExploreDemo: () => void;
   onOpenLegal: (tab: LegalTab) => void;
@@ -36,6 +39,8 @@ interface LandingPageProps {
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
+  currentUser,
+  onGoToDashboard,
   onOpenAuth,
   onExploreDemo,
   onOpenLegal,
@@ -43,14 +48,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
-
-  // Stare interactivă pentru Mockup-ul din Hero (permite vizitatorului să bifeze opționalele live!)
-  const [mockOptionalChecked, setMockOptionalChecked] = useState(true);
-  const mockBasePrice = 3850;
-  const mockOptionalPrice = 650;
-  const mockCurrentSubtotal = mockOptionalChecked ? mockBasePrice + mockOptionalPrice : mockBasePrice;
-  const mockTva = Math.round(mockCurrentSubtotal * 0.19);
-  const mockTotal = mockCurrentSubtotal + mockTva;
 
   // Notificări dinamice live în colț (activitate recentă de semnare & deschidere)
   const [liveIndex, setLiveIndex] = useState(0);
@@ -154,20 +151,33 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <Sparkles className="w-3.5 h-3.5" />
               <span>Abonamente Revolut</span>
             </button>
-            <button
-              type="button"
-              onClick={() => onOpenAuth('LOGIN')}
-              className="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
-            >
-              Intră în Cont
-            </button>
-            <button
-              type="button"
-              onClick={() => onOpenAuth('REGISTER')}
-              className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all active:scale-[0.98] cursor-pointer"
-            >
-              Creează cont gratuit
-            </button>
+            {currentUser ? (
+              <button
+                type="button"
+                onClick={onGoToDashboard || onExploreDemo}
+                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>Mergi în Dashboard</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onOpenAuth('LOGIN')}
+                  className="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
+                >
+                  Intră în Cont
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onOpenAuth('REGISTER')}
+                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all active:scale-[0.98] cursor-pointer"
+                >
+                  Creează cont gratuit
+                </button>
+              </>
+            )}
           </div>
 
           {/* Buton Meniu Mobil */}
@@ -231,26 +241,43 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>Abonamente & Plăți Revolut</span>
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  onOpenAuth('LOGIN');
-                }}
-                className="w-full py-2.5 text-center text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
-              >
-                Intră în Cont
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  onOpenAuth('REGISTER');
-                }}
-                className="w-full py-2.5 text-center text-xs font-bold rounded-xl bg-blue-600 text-white"
-              >
-                Creează cont gratuit
-              </button>
+              {currentUser ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    if (onGoToDashboard) onGoToDashboard();
+                    else onExploreDemo();
+                  }}
+                  className="w-full py-2.5 text-center text-xs font-bold rounded-xl bg-blue-600 text-white flex items-center justify-center gap-1.5"
+                >
+                  <span>Mergi în Dashboard</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      onOpenAuth('LOGIN');
+                    }}
+                    className="w-full py-2.5 text-center text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
+                  >
+                    Intră în Cont
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      onOpenAuth('REGISTER');
+                    }}
+                    className="w-full py-2.5 text-center text-xs font-bold rounded-xl bg-blue-600 text-white"
+                  >
+                    Creează cont gratuit
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -351,211 +378,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </div>
             </motion.div>
 
-            {/* Coloana Dreapta: Mockup Interactiv Ofertă cu Animații Live */}
+            {/* Coloana Dreapta: Ofertă Reală exact cum o generează aplicația cu cele 2 butoane flotante animate */}
             <motion.div
               initial={{ opacity: 0, scale: 0.93, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ duration: 0.7, delay: 0.15, ease: 'easeOut' }}
               className="lg:col-span-6 relative"
             >
-              {/* Badge flotant 1: rată de conversie cu animație fluidă sus-jos */}
-              <motion.div
-                animate={{ y: [-7, 7, -7] }}
-                transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
-                className="absolute -top-4 -left-4 sm:-top-5 sm:-left-5 z-20 bg-white dark:bg-slate-900 border border-emerald-500/40 text-emerald-600 dark:text-emerald-400 p-2.5 sm:p-3 rounded-2xl shadow-xl flex items-center gap-2.5 text-xs font-extrabold"
-              >
-                <div className="relative flex h-3 w-3 shrink-0">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-                </div>
-                <div>
-                  <div className="text-slate-900 dark:text-white font-bold leading-tight">40% viteză închidere</div>
-                  <div className="text-[10px] text-emerald-500 font-semibold">Semnare medie în 4 minute</div>
-                </div>
-              </motion.div>
-
-              {/* Badge flotant 2: notificare live client conectat pe mobil */}
-              <motion.div
-                animate={{ y: [7, -7, 7] }}
-                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut', delay: 0.4 }}
-                className="absolute -bottom-4 -right-2 sm:-bottom-5 sm:-right-4 z-20 bg-white dark:bg-slate-900 border border-blue-500/40 text-blue-600 dark:text-blue-400 p-2.5 sm:p-3 rounded-2xl shadow-xl flex items-center gap-2.5 text-xs font-extrabold"
-              >
-                <div className="w-7 h-7 rounded-xl bg-blue-500/10 flex items-center justify-center">
-                  <Eye className="w-4 h-4 text-blue-500 animate-pulse" />
-                </div>
-                <div>
-                  <div className="text-slate-900 dark:text-white font-bold leading-tight">Client conectat acum</div>
-                  <div className="text-[10px] text-blue-500 font-semibold">Vizualizare de pe smartphone</div>
-                </div>
-              </motion.div>
-
-              {/* Containerul Ofertei Mockup */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-2xl shadow-slate-200/50 dark:shadow-none space-y-4">
-                {/* Header Ofertă */}
-                <div className="flex items-center justify-between pb-3.5 border-b border-slate-100 dark:border-slate-800">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xs">
-                      TS
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-900 dark:text-white">Tech Solutions B2B SRL</h4>
-                      <p className="text-[10px] text-slate-400">Ofertă Comercială #OF-2026-084</p>
-                    </div>
-                  </div>
-                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                    Interactiv & Negociabil
-                  </span>
-                </div>
-
-                {/* Card Destinatar Client */}
-                <div className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-2xl border border-slate-100 dark:border-slate-700/60 flex items-center justify-between text-xs">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Destinatar:</span>
-                    <div className="font-bold text-slate-900 dark:text-white">SkyLine Imobiliare SRL</div>
-                    <div className="text-[11px] text-slate-500">CUI: RO39281920 • Proiect: Climatizare Birouri</div>
-                  </div>
-                  <div className="text-right">
-                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                      </span>
-                      Link Securizat Deschis
-                    </span>
-                  </div>
-                </div>
-
-                {/* Tabel Articole Mockup (cu opționale bifabile live de vizitator!) */}
-                <div className="space-y-2">
-                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between">
-                    <span>Articole din Ofertă</span>
-                    <span className="text-[10px] text-blue-500 font-semibold animate-pulse">(Testează bifa opțională de mai jos)</span>
-                  </div>
-
-                  {/* Articol Fix 1 */}
-                  <div className="p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between text-xs">
-                    <div>
-                      <div className="font-bold text-slate-900 dark:text-white">Sistem Centrală & Climatizare VRV 14kW</div>
-                      <div className="text-[10px] text-slate-400">Echipament + Montaj & Conexiuni frigorifice (1 kit)</div>
-                    </div>
-                    <div className="text-right font-extrabold text-slate-900 dark:text-white">
-                      3.850 RON
-                    </div>
-                  </div>
-
-                  {/* Articol Opțional Interactiv */}
-                  <motion.div
-                    whileHover={{ scale: 1.015 }}
-                    whileTap={{ scale: 0.985 }}
-                    onClick={() => setMockOptionalChecked(!mockOptionalChecked)}
-                    className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between text-xs relative select-none ${
-                      mockOptionalChecked
-                        ? 'border-blue-500/50 bg-blue-500/10 text-slate-900 dark:text-white shadow-xs'
-                        : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850 opacity-75'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        checked={mockOptionalChecked}
-                        onChange={() => {}}
-                        className="rounded text-blue-600 focus:ring-blue-500 pointer-events-none"
-                      />
-                      <div>
-                        <div className="font-bold flex items-center gap-1.5">
-                          <span>Pachet Mentenanță Preventivă 12 Luni</span>
-                          <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                            Opțional
-                          </span>
-                        </div>
-                        <div className="text-[10px] text-slate-400">Revizie semestrială + Intervenție 24/7</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="text-right font-extrabold text-blue-600 dark:text-blue-400">
-                        +650 RON
-                      </div>
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-600 dark:text-blue-300">
-                        Click
-                      </span>
-                    </div>
-                  </motion.div>
-                </div>
-
-                {/* Recalculare Live a Totalului cu tranziție numerică */}
-                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-bold">
-                  <div>
-                    <span className="text-[11px] text-slate-500">Total General (TVA 19% inclus):</span>
-                    <motion.div
-                      key={mockTotal}
-                      initial={{ scale: 0.95, opacity: 0.5 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ duration: 0.25 }}
-                      className="text-lg font-black text-slate-950 dark:text-white"
-                    >
-                      {mockTotal.toLocaleString('ro-RO')} RON
-                    </motion.div>
-                  </div>
-                  <div className="text-[10px] text-right text-slate-400">
-                    <div>Subtotal: {mockCurrentSubtotal.toLocaleString('ro-RO')} RON</div>
-                    <div>TVA (19%): {mockTva.toLocaleString('ro-RO')} RON</div>
-                  </div>
-                </div>
-
-                {/* Zona de Semnătură Digitală Mockup cu Animație de Trasare Semnătură Cursivă */}
-                <div className="p-3.5 rounded-2xl bg-emerald-500/5 border border-emerald-500/30 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
-                        <ShieldCheck className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="font-extrabold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
-                          <span>Semnat Digital de Client</span>
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] bg-emerald-500 text-white font-bold animate-pulse">
-                            eIDAS
-                          </span>
-                        </div>
-                        <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                          Mihai Ionescu (Director Tehnic) • ID eIDAS: 8a4c-9f
-                        </div>
-                      </div>
-                    </div>
-                    <motion.div
-                      animate={{ scale: [1, 1.08, 1] }}
-                      transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-                      className="px-2 py-1 bg-emerald-600 text-white rounded-lg text-[10px] font-black tracking-wider shadow-sm"
-                    >
-                      VALIDAT
-                    </motion.div>
-                  </div>
-
-                  {/* Animație SVG a semnăturii trasate în direct pe ecran touch */}
-                  <div className="h-10 bg-white/70 dark:bg-slate-950/60 rounded-xl border border-dashed border-emerald-500/30 flex items-center justify-between px-3 overflow-hidden">
-                    <span className="text-[10px] text-slate-400 font-medium select-none">Semnătură ecran:</span>
-                    <svg className="w-36 h-8" viewBox="0 0 160 35">
-                      <motion.path
-                        d="M 8 20 C 22 6, 32 28, 48 14 C 62 4, 72 30, 92 12 C 108 24, 122 10, 138 20 C 146 26, 152 14, 156 18"
-                        fill="transparent"
-                        stroke="#059669"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        initial={{ pathLength: 0, opacity: 0 }}
-                        animate={{ pathLength: [0, 1, 1, 0], opacity: [0, 1, 1, 0] }}
-                        transition={{
-                          duration: 4.2,
-                          repeat: Infinity,
-                          ease: 'easeInOut',
-                          times: [0, 0.5, 0.85, 1],
-                        }}
-                      />
-                    </svg>
-                    <span className="text-[9px] font-mono text-emerald-600 dark:text-emerald-400 font-bold">
-                      Certificat eIDAS
-                    </span>
-                  </div>
-                </div>
-              </div>
+              <HeroQuotePreview />
             </motion.div>
           </div>
         </div>

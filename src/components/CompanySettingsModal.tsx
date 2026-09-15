@@ -19,6 +19,7 @@ import {
 import { Organization, DashboardTheme, ProformaInvoice } from '../types.ts';
 import { THEME_OPTIONS } from '../lib/themes.ts';
 import { getSavedProformas, exportProformaToPdf, OPERATOR_PROVIDER_INFO, ADMIN_NOTIFICATION_EMAIL } from '../lib/proforma.ts';
+import { ModernInvoiceTemplate } from './ModernInvoiceTemplate.tsx';
 
 interface CompanySettingsModalProps {
   organization: Organization;
@@ -48,6 +49,7 @@ export const CompanySettingsModal: React.FC<CompanySettingsModalProps> = ({
   const [logoUrl, setLogoUrl] = useState(organization.logo_url || '');
   const [brandColor, setBrandColor] = useState(organization.brand_color || '#3b82f6');
   const [savedProformas] = useState<ProformaInvoice[]>(() => getSavedProformas());
+  const [viewingInvoice, setViewingInvoice] = useState<ProformaInvoice | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -468,7 +470,7 @@ export const CompanySettingsModal: React.FC<CompanySettingsModalProps> = ({
                             {new Date(item.data_emiterii).toLocaleDateString('ro-RO')} • {item.descriere_serviciu}
                           </p>
                           <div className="flex items-center gap-3 text-[10px] text-slate-400 mt-0.5">
-                            <span>Destinatari: {item.transmis_client_email} & {ADMIN_NOTIFICATION_EMAIL}</span>
+                            <span>Destinatari: {item.transmis_client_email} &amp; {ADMIN_NOTIFICATION_EMAIL}</span>
                           </div>
                         </div>
 
@@ -476,6 +478,13 @@ export const CompanySettingsModal: React.FC<CompanySettingsModalProps> = ({
                           <span className="font-black text-sm text-slate-900 dark:text-white">
                             {item.valoare},00 RON
                           </span>
+                          <button
+                            type="button"
+                            onClick={() => setViewingInvoice(item)}
+                            className="px-3 py-1.5 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-xl border border-blue-200 dark:border-blue-800 transition-colors cursor-pointer"
+                          >
+                            Vezi Factură
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -502,6 +511,19 @@ export const CompanySettingsModal: React.FC<CompanySettingsModalProps> = ({
             </button>
           </div>
         </form>
+
+        {/* Modal previzualizare Factură cu Template Modern UI */}
+        {viewingInvoice && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs overflow-y-auto">
+            <div className="relative w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800 my-6 max-h-[92vh] overflow-y-auto">
+              <ModernInvoiceTemplate
+                invoice={viewingInvoice}
+                onClose={() => setViewingInvoice(null)}
+                showActions={true}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
