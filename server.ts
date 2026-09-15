@@ -137,6 +137,124 @@ app.post('/api/quotes/:token/view', (req, res) => {
   }
 });
 
+// 7. Revolut Business - Creare comandă oficială de plată (cu Apple Pay, Google Pay, Revolut Pay & Card)
+app.post('/api/create-revolut-order', async (req, res) => {
+  try {
+    const { plan, email, organizationId, clientName, returnUrl, customAmount } = req.body;
+
+    // Prețuri pachete conform OfferFlow:
+    // STARTER: 45 RON
+    // CLASIC: 100 RON
+    const amountInRon = customAmount ? Number(customAmount) : plan === 'CLASIC' ? 100 : 45;
+    const amountInBani = Math.round(amountInRon * 100);
+    const planName = plan === 'CLASIC' ? 'Clasic (100 RON)' : 'Starter (45 RON)';
+
+    const apiKey = process.env.REVOLUT_API_KEY;
+    const env = process.env.REVOLUT_ENVIRONMENT || 'production';
+    const baseUrl = env === 'production'
+      ? 'https://merchant.revolut.com/api/1.0'
+      : 'https://sandbox-merchant.revolut.com/api/1.0';
+
+    if (apiKey && !apiKey.includes('xxxxxxxx')) {
+      const response = await fetch(`${baseUrl}/orders`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'Revolut-Api-Version': '2023-09-01',
+        },
+        body: JSON.stringify({
+          amount: amountInBani,
+          currency: 'RON',
+          customer_email: email || 'catalinsandu@protonmail.com',
+          description: `OfferFlow - Abonament Plan ${planName} (30 zile)`,
+          merchant_order_ext_ref: organizationId || `org_${Date.now()}`,
+          redirect_url: returnUrl || undefined,
+          capture_mode: 'AUTOMATIC',
+        }),
+      });
+
+      const orderData: any = await response.json();
+
+      if (!response.ok) {
+        console.error('Eroare Revolut Order API:', orderData);
+        // Fallback dacă Revolut API returnează eroare temporară
+        const fallbackUrl = plan === 'CLASIC'
+          ? 'https://checkout.revolut.com/payment-link/66c35f26-fed9-4dff-a4ab-edc5e4cb900f'
+          : 'https://checkout.revolut.com/payment-link/7bb72a48-6627-4f55-be6b-9c3327717dca';
+        return res.json({
+          success: true,
+          orderId: `rev_${Date.now()}`,
+          url: fallbackUrl,
+          amount: amountInRon,
+        });
+      }
+
+      const checkoutUrl = orderData.checkout_url ||
+        (orderData.public_id ? `https://checkout.revolut.com/payment-link/${orderData.public_id}` : null) ||
+        (orderData.token ? `https://checkout.revolut.com/pay/${orderData.token}` : null);
+
+      return res.json({
+        success: true,
+        orderId: orderData.id,
+        token: orderData.token || orderData.public_id,
+        url: checkoutUrl,
+        amount: amountInRon,
+      });
+    }
+
+    // Dacă cheia nu e setată, folosim linkurile Revolut directe ale lui Cătălin Sandu PFA
+    const directUrl = plan === 'CLASIC'
+      ? 'https://checkout.revolut.com/payment-link/66c35f26-fed9-4dff-a4ab-edc5e4cb900f'
+      : 'https://checkout.revolut.com/payment-link/7bb72a48-6627-4f55-be6b-9c3327717dca';
+
+    return res.json({
+      success: true,
+      orderId: `rev_direct_${Date.now()}`,
+      url: directUrl,
+      amount: amountInRon,
+    });
+  } catch (err: any) {
+    console.error('Eroare la crearea comenzii Revolut:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 8. Revolut Business - Verificare status comandă
+app.get('/api/revolut-order-status/:orderId', async (req, res) => {
+  try {
+    const orderId = req.params.orderId;
+    const apiKey = process.env.REVOLUT_API_KEY;
+    const env = process.env.REVOLUT_ENVIRONMENT || 'production';
+    const baseUrl = env === 'production'
+      ? 'https://merchant.revolut.com/api/1.0'
+      : 'https://sandbox-merchant.revolut.com/api/1.0';
+
+    if (apiKey && !apiKey.includes('xxxxxxxx') && !orderId.startsWith('rev_direct_')) {
+      const response = await fetch(`${baseUrl}/orders/${orderId}`, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Revolut-Api-Version': '2023-09-01',
+        },
+      });
+
+      if (response.ok) {
+        const orderData: any = await response.json();
+        const isPaid = orderData.state === 'COMPLETED' || orderData.state === 'AUTHORISED';
+        return res.json({
+          success: true,
+          state: orderData.state,
+          isPaid,
+        });
+      }
+    }
+
+    res.json({ success: true, state: 'PENDING', isPaid: false });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 async function startServer() {
   // Vite middleware în development
   if (process.env.NODE_ENV !== 'production') {

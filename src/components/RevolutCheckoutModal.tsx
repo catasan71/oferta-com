@@ -1,22 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   ArrowLeft,
   Check,
-  CheckCircle2,
   ShieldCheck,
   Download,
-  Building2,
-  User,
-  Mail,
-  Phone,
-  MapPin,
   Lock,
-  QrCode,
-  Smartphone,
-  CreditCard,
+  ExternalLink,
   Loader2,
   Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 import { Organization, SubscriptionPlan, ProformaInvoice } from '../types.ts';
 import {
@@ -33,7 +26,7 @@ interface RevolutCheckoutModalProps {
   onSuccessUpgrade: (plan: SubscriptionPlan) => void;
 }
 
-// Logo-uri vectoriale curate
+// Logo-uri vectoriale Revolut & Carduri
 const VisaLogo = () => (
   <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-[#00579f] text-white font-black italic text-[9px] tracking-tighter leading-none select-none">
     VISA
@@ -69,16 +62,23 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
   onClose,
   onSuccessUpgrade,
 }) => {
-  // Pasul 1: Date facturare | Pasul 2: Ecranul Revolut Business (attach) | Pasul 3: Succes & Factură
-  const [step, setStep] = useState<'BILLING' | 'REVOLUT_CHECKOUT' | 'SUCCESS'>('BILLING');
+  // Etape: 
+  // 1. BILLING: Date de facturare & confirmare sumă (45 RON sau 100 RON)
+  // 2. REVOLUT_CHECKOUT: Ecranul Revolut Business cu metodele de plată
+  // 3. AWAITING_PAYMENT: Așteptare finalizare plată pe pagina oficială Revolut
+  // 4. SUCCESS: Factură fiscală generată & descărcabilă în PDF
+  const [step, setStep] = useState<'BILLING' | 'REVOLUT_CHECKOUT' | 'AWAITING_PAYMENT' | 'SUCCESS'>('BILLING');
 
-  // Sumă plată: 500 lei (identic cu captura) sau suma planului
-  const [selectedPlan, setSelectedPlan] = useState<'STARTER' | 'CLASIC' | 'CUSTOM'>(
+  // Prețuri corecte din OfferFlow:
+  // STARTER: 45 lei | CLASIC: 100 lei
+  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>(
     initialSelectedPlan === 'CLASIC' ? 'CLASIC' : 'STARTER'
   );
-  const [amount, setAmount] = useState<number>(500); // 500 lei ca în attach
+  const [amount, setAmount] = useState<number>(
+    initialSelectedPlan === 'CLASIC' ? 100 : 45
+  );
 
-  // Date de facturare (precompletate inteligent cu datele firmei / PFA)
+  // Date facturare
   const [tipPersoana, setTipPersoana] = useState<'PJ' | 'PF'>('PJ');
   const [denumire, setDenumire] = useState(
     organization?.nume || 'SANDU M.I. CĂTĂLIN PERSOANĂ FIZICĂ AUTORIZATĂ'
@@ -88,54 +88,121 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
   const [telefon, setTelefon] = useState('+40765263860');
   const [adresa, setAdresa] = useState('Craiova, Dolj, Romania');
 
-  // Stări pentru sub-metodele de plată din ecranul Revolut
-  const [activePaymentMethod, setActivePaymentMethod] = useState<
-    'NONE' | 'REVOLUT_PAY' | 'CARD' | 'APPLE_PAY' | 'GOOGLE_PAY'
-  >('NONE');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [processingText, setProcessingText] = useState('');
+  // Stare comunicare Revolut API
+  const [isOpeningPayment, setIsOpeningPayment] = useState(false);
+  const [activeCheckoutUrl, setActiveCheckoutUrl] = useState<string>('');
+  const [activeOrderId, setActiveOrderId] = useState<string>('');
+  const [selectedMethodName, setSelectedMethodName] = useState<string>('Revolut Checkout');
+
+  // Factură finală
   const [generatedInvoice, setGeneratedInvoice] = useState<ProformaInvoice | null>(null);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
-  // Câmpuri plată cu cardul inline
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvc, setCardCvc] = useState('');
-  const [cardName, setCardName] = useState(denumire);
+  // Actualizare sumă când se schimbă planul
+  const handleSelectPlan = (plan: SubscriptionPlan) => {
+    setSelectedPlan(plan);
+    setAmount(plan === 'CLASIC' ? 100 : 45);
+  };
 
-  // Număr telefon pentru Revolut Pay
-  const [revolutPhone, setRevolutPhone] = useState(telefon);
-
-  // Trecere de la date facturare la ecranul de plată
+  // Trimitere din pasul 1 la ecranul de selecție metode Revolut
   const handleProceedToPayment = (e: React.FormEvent) => {
     e.preventDefault();
     setStep('REVOLUT_CHECKOUT');
   };
 
-  // Executare autorizare plată cu animație autentică Revolut
-  const executePayment = async (methodName: string) => {
-    setIsProcessing(true);
-    setProcessingText(`Se autorizează plata de ${amount} lei prin ${methodName}...`);
+  // Deschidere plată reală prin Revolut
+  const handleOpenRevolutPayment = async (methodName: string) => {
+    setIsOpeningPayment(true);
+    setSelectedMethodName(methodName);
 
-    setTimeout(() => {
-      // 1. Generare proformă / factură fiscală
-      const targetPlan: SubscriptionPlan = selectedPlan === 'CLASIC' ? 'CLASIC' : 'STARTER';
-      const invoice = createAndRecordProforma({
-        plan: targetPlan,
-        customAmount: amount,
-        clientName: denumire,
-        clientCui: cui,
-        clientAddress: adresa,
-        clientEmail: email,
-        clientPhone: telefon,
-        metodaPlata: methodName,
+    // Deschidem fereastra sincron pentru a nu fi blocată de browser popup blocker
+    const payWindow = window.open('about:blank', '_blank');
+
+    try {
+      const res = await fetch('/api/create-revolut-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan: selectedPlan,
+          customAmount: amount,
+          email,
+          clientName: denumire,
+          organizationId: organization?.id,
+          returnUrl: window.location.origin,
+        }),
       });
 
-      setGeneratedInvoice(invoice);
-      setIsProcessing(false);
-      setStep('SUCCESS');
-      onSuccessUpgrade(targetPlan);
-    }, 1800);
+      const data = await res.json();
+
+      if (data.success && data.url) {
+        setActiveCheckoutUrl(data.url);
+        setActiveOrderId(data.orderId || '');
+        if (payWindow) {
+          payWindow.location.href = data.url;
+        } else {
+          window.open(data.url, '_blank');
+        }
+        setStep('AWAITING_PAYMENT');
+      } else {
+        if (payWindow) payWindow.close();
+        // Fallback dacă nu s-a generat url
+        const fallbackUrl = selectedPlan === 'CLASIC'
+          ? 'https://checkout.revolut.com/payment-link/66c35f26-fed9-4dff-a4ab-edc5e4cb900f'
+          : 'https://checkout.revolut.com/payment-link/7bb72a48-6627-4f55-be6b-9c3327717dca';
+        setActiveCheckoutUrl(fallbackUrl);
+        window.open(fallbackUrl, '_blank');
+        setStep('AWAITING_PAYMENT');
+      }
+    } catch (err) {
+      console.error('Eroare creare plată Revolut:', err);
+      if (payWindow) payWindow.close();
+      const fallbackUrl = selectedPlan === 'CLASIC'
+        ? 'https://checkout.revolut.com/payment-link/66c35f26-fed9-4dff-a4ab-edc5e4cb900f'
+        : 'https://checkout.revolut.com/payment-link/7bb72a48-6627-4f55-be6b-9c3327717dca';
+      setActiveCheckoutUrl(fallbackUrl);
+      window.open(fallbackUrl, '_blank');
+      setStep('AWAITING_PAYMENT');
+    } finally {
+      setIsOpeningPayment(false);
+    }
+  };
+
+  // Verificare automată status comandă Revolut prin polling
+  useEffect(() => {
+    if (step !== 'AWAITING_PAYMENT' || !activeOrderId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/revolut-order-status/${activeOrderId}`);
+        const data = await res.json();
+        if (data.isPaid) {
+          handleConfirmPaymentSuccess();
+        }
+      } catch (e) {
+        // ignorare erori temporare
+      }
+    }, 3500);
+
+    return () => clearInterval(interval);
+  }, [step, activeOrderId]);
+
+  // Confirmare finală a plății și emitere factură
+  const handleConfirmPaymentSuccess = () => {
+    const invoice = createAndRecordProforma({
+      plan: selectedPlan,
+      customAmount: amount,
+      clientName: denumire,
+      clientCui: cui,
+      clientAddress: adresa,
+      clientEmail: email,
+      clientPhone: telefon,
+      metodaPlata: `Revolut Business (${selectedMethodName})`,
+      revolutOrderId: activeOrderId || undefined,
+    });
+
+    setGeneratedInvoice(invoice);
+    setStep('SUCCESS');
+    onSuccessUpgrade(selectedPlan);
   };
 
   const handleDownloadPdf = async () => {
@@ -155,7 +222,7 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
       <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-6">
 
         {/* ======================================================== */}
-        {/* PASUL 1: DATE DE FACTURARE SIMPLIFICATE                   */}
+        {/* PASUL 1: DATE DE FACTURARE & SELECTOR PLANURI OFFERFLOW  */}
         {/* ======================================================== */}
         {step === 'BILLING' && (
           <div className="p-6 sm:p-8">
@@ -177,61 +244,48 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
               </button>
             </div>
 
-            {/* Selector Sumă / Pachet */}
+            {/* Selector Pachete OfferFlow: 45 RON Starter | 100 RON Clasic */}
             <div className="my-5 p-4 bg-slate-50 border border-slate-200 rounded-xl">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                Pachet selectat &amp; Valoare de plată
+                Alege Pachetul OfferFlow
               </label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    setSelectedPlan('STARTER');
-                    setAmount(199);
-                  }}
-                  className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
-                    selectedPlan === 'STARTER' && amount === 199
-                      ? 'border-blue-600 bg-blue-50/50 text-blue-900 shadow-xs'
+                  onClick={() => handleSelectPlan('STARTER')}
+                  className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                    selectedPlan === 'STARTER'
+                      ? 'border-blue-600 bg-blue-50/60 text-blue-900 shadow-xs ring-1 ring-blue-600'
                       : 'border-slate-200 bg-white hover:bg-slate-100 text-slate-700'
                   }`}
                 >
-                  <div className="text-xs font-bold">STARTER</div>
-                  <div className="text-sm font-black mt-0.5">199 lei</div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedPlan('CUSTOM');
-                    setAmount(500);
-                  }}
-                  className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
-                    amount === 500
-                      ? 'border-blue-600 bg-blue-50/50 text-blue-900 shadow-xs ring-1 ring-blue-600'
-                      : 'border-slate-200 bg-white hover:bg-slate-100 text-slate-700'
-                  }`}
-                >
-                  <div className="text-xs font-bold flex items-center justify-center gap-1">
-                    <span>Ofertă / Demo</span>
-                    <Sparkles className="w-3 h-3 text-amber-500" />
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider">Plan Starter</span>
+                    <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">
+                      Popular
+                    </span>
                   </div>
-                  <div className="text-sm font-black mt-0.5 text-slate-900">500 lei</div>
+                  <div className="text-lg font-black mt-1 text-slate-900">45 lei</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">/ lună • 5 oferte active</div>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => {
-                    setSelectedPlan('CLASIC');
-                    setAmount(499);
-                  }}
-                  className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
-                    selectedPlan === 'CLASIC' && amount === 499
-                      ? 'border-blue-600 bg-blue-50/50 text-blue-900 shadow-xs'
+                  onClick={() => handleSelectPlan('CLASIC')}
+                  className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                    selectedPlan === 'CLASIC'
+                      ? 'border-blue-600 bg-blue-50/60 text-blue-900 shadow-xs ring-1 ring-blue-600'
                       : 'border-slate-200 bg-white hover:bg-slate-100 text-slate-700'
                   }`}
                 >
-                  <div className="text-xs font-bold">CLASIC B2B</div>
-                  <div className="text-sm font-black mt-0.5">499 lei</div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider">Plan Clasic</span>
+                    <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">
+                      B2B
+                    </span>
+                  </div>
+                  <div className="text-lg font-black mt-1 text-slate-900">100 lei</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">/ lună • 30 oferte active</div>
                 </button>
               </div>
             </div>
@@ -285,7 +339,7 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                     required
                     value={cui}
                     onChange={(e) => setCui(e.target.value)}
-                    placeholder="ex: 54552543 sau RO..."
+                    placeholder="ex: 54552543"
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                 </div>
@@ -352,18 +406,15 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
         )}
 
         {/* ======================================================== */}
-        {/* PASUL 2: FEREASTRA EXACTĂ DIN ATTACH (REVOLUT BUSINESS)   */}
+        {/* PASUL 2: ECRANUL REVOLUT BUSINESS (IDENTIC CU CAPTURA)     */}
         {/* ======================================================== */}
         {step === 'REVOLUT_CHECKOUT' && (
           <div className="bg-[#f7f7f8] text-slate-900 min-h-[560px] p-6 sm:p-10 flex flex-col justify-between select-none">
-            {/* Buton navigare înapoi */}
+            {/* Navigare înapoi */}
             <div className="flex items-center justify-between pb-3">
               <button
                 type="button"
-                onClick={() => {
-                  setActivePaymentMethod('NONE');
-                  setStep('BILLING');
-                }}
+                onClick={() => setStep('BILLING')}
                 className="text-xs font-bold text-slate-500 hover:text-slate-900 flex items-center gap-1 cursor-pointer transition-colors"
               >
                 <ArrowLeft className="w-4 h-4" />
@@ -378,7 +429,7 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
               </button>
             </div>
 
-            {/* Antet identic cu captura din attach */}
+            {/* Antet Revolut Business */}
             <div className="pt-2 pb-6">
               <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-950 tracking-tight">
                 Plătește {amount} lei
@@ -388,25 +439,22 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
               </p>
             </div>
 
-            {/* Animație de procesare tranzacție dacă este activă */}
-            {isProcessing && (
-              <div className="my-8 p-6 bg-white rounded-2xl border border-slate-200 shadow-md text-center space-y-3 animate-in fade-in zoom-in-95 duration-150">
+            {isOpeningPayment ? (
+              <div className="my-8 p-6 bg-white rounded-2xl border border-slate-200 shadow-md text-center space-y-3">
                 <Loader2 className="w-8 h-8 text-black animate-spin mx-auto" />
-                <p className="text-sm font-bold text-slate-900">{processingText}</p>
+                <p className="text-sm font-bold text-slate-900">Se deschide conexiunea securizată Revolut Checkout...</p>
                 <p className="text-xs text-slate-500">
-                  Vă rugăm să nu închideți această fereastră în timpul autorizării...
+                  Vă rugăm să așteptați câteva secunde.
                 </p>
               </div>
-            )}
-
-            {/* Secțiunea de Metode de Plată (Exact ca în screenshot) */}
-            {!isProcessing && (
+            ) : (
+              /* Metode de plată oficiale */
               <div className="space-y-4">
                 <h2 className="text-base font-bold text-slate-900">
                   Alege o metodă de plată
                 </h2>
 
-                {/* 1. Cardul Revolut Pay */}
+                {/* 1. Revolut Pay */}
                 <div className="bg-white rounded-2xl p-5 shadow-xs border border-slate-200/80 hover:border-slate-300 transition-all">
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -427,165 +475,51 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => {
-                        if (activePaymentMethod === 'REVOLUT_PAY') {
-                          executePayment('Revolut Pay');
-                        } else {
-                          setActivePaymentMethod('REVOLUT_PAY');
-                        }
-                      }}
+                      onClick={() => handleOpenRevolutPayment('Revolut Pay')}
                       className="px-6 py-2.5 bg-black hover:bg-slate-800 active:scale-95 text-white font-black text-sm rounded-full shadow-sm transition-all cursor-pointer flex items-center justify-center shrink-0 tracking-tight"
                     >
                       <span>Revolut</span>
                       <span className="font-normal ml-1">Pay</span>
                     </button>
                   </div>
-
-                  {/* Detalii extinse Revolut Pay la clic */}
-                  {activePaymentMethod === 'REVOLUT_PAY' && (
-                    <div className="mt-4 pt-4 border-t border-slate-100 space-y-3 animate-in fade-in duration-150">
-                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700 flex items-start gap-2.5">
-                        <Smartphone className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                        <div>
-                          <span className="font-bold block text-slate-900 mb-0.5">
-                            Autorizare plată din aplicația Revolut
-                          </span>
-                          Număr telefon asociat contului: <strong>{revolutPhone}</strong>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="tel"
-                          value={revolutPhone}
-                          onChange={(e) => setRevolutPhone(e.target.value)}
-                          placeholder="+40 765 263 860"
-                          className="w-full px-3.5 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-black outline-none font-medium"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => executePayment('Revolut Pay')}
-                          className="px-4 py-2 bg-black hover:bg-slate-800 text-white font-bold text-xs rounded-xl shrink-0 transition-colors cursor-pointer"
-                        >
-                          Confirmă în Revolut ({amount} lei)
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
 
-                {/* 2. Containerul Card de debit/credit + Apple Pay + Google Pay */}
+                {/* 2. Container Card bancar + Apple Pay + Google Pay */}
                 <div className="bg-white rounded-2xl shadow-xs border border-slate-200/80 divide-y divide-slate-100 overflow-hidden">
-                  {/* Rândul 1: Card de debit sau de credit */}
-                  <div className="p-5">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="text-base font-bold text-slate-950">
-                          Card de debit sau de credit
-                        </div>
-                        <div className="flex items-center gap-1.5 mt-2">
-                          <VisaLogo />
-                          <MastercardLogo />
-                        </div>
+                  {/* Card debit / credit */}
+                  <div className="p-5 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-base font-bold text-slate-950">
+                        Card de debit sau de credit
                       </div>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setActivePaymentMethod(
-                            activePaymentMethod === 'CARD' ? 'NONE' : 'CARD'
-                          )
-                        }
-                        className="px-5 py-2.5 bg-[#f0f0f2] hover:bg-[#e4e4e7] active:scale-95 text-slate-800 font-bold text-xs rounded-full transition-all cursor-pointer shrink-0"
-                      >
-                        {activePaymentMethod === 'CARD'
-                          ? 'Ascunde formular'
-                          : 'Plătește cu car...'}
-                      </button>
+                      <div className="flex items-center gap-1.5 mt-2">
+                        <VisaLogo />
+                        <MastercardLogo />
+                      </div>
                     </div>
 
-                    {/* Formular Card inline când se apasă pe buton */}
-                    {activePaymentMethod === 'CARD' && (
-                      <div className="mt-4 pt-4 border-t border-slate-100 space-y-3 animate-in fade-in duration-150">
-                        <div>
-                          <label className="block text-[11px] font-bold text-slate-700 mb-1 uppercase tracking-wider">
-                            Număr Card
-                          </label>
-                          <div className="relative">
-                            <input
-                              type="text"
-                              maxLength={19}
-                              value={cardNumber}
-                              onChange={(e) => {
-                                const v = e.target.value
-                                  .replace(/\D/g, '')
-                                  .replace(/(.{4})/g, '$1 ')
-                                  .trim();
-                                setCardNumber(v);
-                              }}
-                              placeholder="4532 •••• •••• 8920"
-                              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-medium focus:bg-white focus:ring-2 focus:ring-black outline-none"
-                            />
-                            <div className="absolute right-3 top-2.5 flex items-center gap-1">
-                              <VisaLogo />
-                              <MastercardLogo />
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-[11px] font-bold text-slate-700 mb-1 uppercase tracking-wider">
-                              Valabilitate (LL/AA)
-                            </label>
-                            <input
-                              type="text"
-                              maxLength={5}
-                              value={cardExpiry}
-                              onChange={(e) => {
-                                let v = e.target.value.replace(/\D/g, '');
-                                if (v.length > 2) v = v.substring(0, 2) + '/' + v.substring(2, 4);
-                                setCardExpiry(v);
-                              }}
-                              placeholder="12/28"
-                              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-medium text-center focus:bg-white focus:ring-2 focus:ring-black outline-none"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[11px] font-bold text-slate-700 mb-1 uppercase tracking-wider">
-                              Cod CVC / CVV
-                            </label>
-                            <input
-                              type="password"
-                              maxLength={4}
-                              value={cardCvc}
-                              onChange={(e) => setCardCvc(e.target.value.replace(/\D/g, ''))}
-                              placeholder="•••"
-                              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-medium text-center focus:bg-white focus:ring-2 focus:ring-black outline-none"
-                            />
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => executePayment('Card Bancar Securizat')}
-                          className="w-full py-3 bg-black hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-2"
-                        >
-                          <Lock className="w-3.5 h-3.5" />
-                          <span>Plătește {amount} lei</span>
-                        </button>
-                      </div>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenRevolutPayment('Card de debit/credit')}
+                      className="px-5 py-2.5 bg-[#f0f0f2] hover:bg-[#e4e4e7] active:scale-95 text-slate-800 font-bold text-xs rounded-full transition-all cursor-pointer shrink-0"
+                    >
+                      Plătește cu car...
+                    </button>
                   </div>
 
-                  {/* Rândul 2: Apple Pay */}
+                  {/* Apple Pay - Deschide pagina Revolut cu Apple Pay activ pe iOS/Mac */}
                   <div className="p-5 flex items-center justify-between gap-3">
-                    <div className="text-base font-bold text-slate-950">
-                      Apple Pay
+                    <div>
+                      <div className="text-base font-bold text-slate-950">
+                        Apple Pay
+                      </div>
+                      <div className="text-xs text-slate-400 mt-0.5">
+                        Plată biometrică instantanee cu Apple Wallet
+                      </div>
                     </div>
                     <button
                       type="button"
-                      onClick={() => executePayment('Apple Pay')}
+                      onClick={() => handleOpenRevolutPayment('Apple Pay')}
                       className="px-7 py-2.5 bg-black hover:bg-slate-800 active:scale-95 text-white font-bold text-sm rounded-full shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
                     >
                       <AppleLogo />
@@ -593,14 +527,19 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                     </button>
                   </div>
 
-                  {/* Rândul 3: Google Pay */}
+                  {/* Google Pay */}
                   <div className="p-5 flex items-center justify-between gap-3">
-                    <div className="text-base font-bold text-slate-950">
-                      Google Pay
+                    <div>
+                      <div className="text-base font-bold text-slate-950">
+                        Google Pay
+                      </div>
+                      <div className="text-xs text-slate-400 mt-0.5">
+                        Plată rapidă securizată prin Google Account
+                      </div>
                     </div>
                     <button
                       type="button"
-                      onClick={() => executePayment('Google Pay')}
+                      onClick={() => handleOpenRevolutPayment('Google Pay')}
                       className="px-7 py-2.5 bg-black hover:bg-slate-800 active:scale-95 text-white font-bold text-sm rounded-full shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
                     >
                       <GoogleGLogo />
@@ -611,7 +550,7 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
               </div>
             )}
 
-            {/* Subsol identic 1:1 cu captura din attach */}
+            {/* Subsol oficial comerciant */}
             <div className="pt-10 pb-2 text-center text-xs text-slate-500 space-y-3">
               <div>
                 <p className="font-medium">{OPERATOR_PROVIDER_INFO.email}</p>
@@ -641,7 +580,88 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
         )}
 
         {/* ======================================================== */}
-        {/* PASUL 3: CONFIRMARE REUȘITĂ & DESCĂRCARE FACTURĂ          */}
+        {/* PASUL 2.5: AȘTEPTARE FINALIZARE PE REVOLUT (REAL CHECKOUT) */}
+        {/* ======================================================== */}
+        {step === 'AWAITING_PAYMENT' && (
+          <div className="p-6 sm:p-8 text-center space-y-6 bg-white">
+            <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto border border-blue-200 shadow-xs">
+              <Sparkles className="w-8 h-8 text-blue-600 animate-pulse" />
+            </div>
+
+            <div className="space-y-2">
+              <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-blue-50 text-blue-700 border border-blue-200">
+                Fereastra Revolut Checkout Deschisă
+              </span>
+              <h3 className="text-2xl font-black text-slate-900">
+                Plătește {amount} lei prin {selectedMethodName}
+              </h3>
+              <p className="text-xs text-slate-600 max-w-md mx-auto leading-relaxed">
+                Pagina securizată Revolut a fost deschisă în browserul dvs. 
+                Finalizați autorizarea prin <strong>{selectedMethodName}</strong> pentru activarea abonamentului <strong>OfferFlow {selectedPlan}</strong>.
+              </p>
+            </div>
+
+            {/* Panou Detalii & Link redeschidere */}
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl max-w-md mx-auto text-left text-xs space-y-2.5">
+              <div className="flex justify-between items-center text-slate-600">
+                <span>Beneficiar:</span>
+                <span className="font-bold text-slate-900">{OPERATOR_PROVIDER_INFO.nume}</span>
+              </div>
+              <div className="flex justify-between items-center text-slate-600">
+                <span>Pachet selectat:</span>
+                <span className="font-bold text-blue-600">{selectedPlan} (30 de zile)</span>
+              </div>
+              <div className="flex justify-between items-center text-slate-600">
+                <span>Total de achitat:</span>
+                <span className="font-black text-slate-900 text-sm">{amount} RON</span>
+              </div>
+              <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
+                <span className="text-slate-500">Nu s-a deschis fereastra?</span>
+                {activeCheckoutUrl && (
+                  <a
+                    href={activeCheckoutUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-bold text-blue-600 hover:underline flex items-center gap-1"
+                  >
+                    <span>Deschide Revolut Checkout</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
+              </div>
+            </div>
+
+            {/* Butoane acțiune */}
+            <div className="space-y-3 max-w-md mx-auto pt-2">
+              <button
+                type="button"
+                onClick={handleConfirmPaymentSuccess}
+                className="w-full py-3.5 px-5 bg-black hover:bg-slate-800 text-white font-black text-sm rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Check className="w-4 h-4 stroke-[3]" />
+                <span>Am finalizat plata în Revolut (Activează Planul)</span>
+              </button>
+
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setStep('REVOLUT_CHECKOUT')}
+                  className="text-xs font-bold text-slate-500 hover:text-slate-800 cursor-pointer"
+                >
+                  ← Alege altă metodă
+                </button>
+
+                <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-500" />
+                  <span>Se verifică statusul plății...</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* PASUL 3: SUCCES & DESCĂRCARE FACTURĂ FISCALĂ (PDF)        */}
         {/* ======================================================== */}
         {step === 'SUCCESS' && (
           <div className="p-8 sm:p-10 text-center space-y-5 bg-white">
@@ -654,11 +674,11 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                 Plată Autorizată cu Succes
               </span>
               <h3 className="text-2xl font-black text-slate-900 mt-3">
-                Plata de {amount} lei a fost confirmată!
+                Abonamentul OfferFlow {selectedPlan} este Activ!
               </h3>
               <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                Tranzacția a fost procesată cu succes către{' '}
-                <strong>{OPERATOR_PROVIDER_INFO.nume}</strong>. Abonamentul dvs. este acum activat.
+                Tranzacția de <strong>{amount} RON</strong> a fost confirmată către{' '}
+                <strong>{OPERATOR_PROVIDER_INFO.nume}</strong>.
               </p>
             </div>
 

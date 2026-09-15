@@ -88,7 +88,7 @@ export function createAndRecordProforma({
   revolutTxId?: string;
 }): ProformaInvoice {
   const now = new Date();
-  const valoare = customAmount !== undefined ? customAmount : plan === 'STARTER' ? 199 : plan === 'CLASIC' ? 499 : 500;
+  const valoare = customAmount !== undefined ? customAmount : plan === 'STARTER' ? 45 : plan === 'CLASIC' ? 100 : 45;
   const serieNumar = generateProformaNumber();
 
   const safeName = (clientName || 'SANDU M.I. CĂTĂLIN PERSOANĂ FIZICĂ AUTORIZATĂ').toString().trim();
