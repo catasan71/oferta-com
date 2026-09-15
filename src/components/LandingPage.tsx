@@ -142,15 +142,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </nav>
 
           {/* Butoane CTA Autentificare & Revolut */}
+          {/* Butoane Acțiune Desktop */}
           <div className="hidden sm:flex items-center gap-2.5">
-            <button
-              type="button"
-              onClick={() => onSelectPlanUpgrade && onSelectPlanUpgrade('STARTER')}
-              className="px-3 py-1.5 rounded-xl border border-blue-500/30 bg-blue-50/60 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Abonamente Revolut</span>
-            </button>
             {currentUser ? (
               <button
                 type="button"
@@ -161,22 +154,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => onOpenAuth('LOGIN')}
-                  className="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
-                >
-                  Intră în Cont
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onOpenAuth('REGISTER')}
-                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all active:scale-[0.98] cursor-pointer"
-                >
-                  Creează cont gratuit
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={() => onOpenAuth('LOGIN')}
+                className="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
+              >
+                Intră în Cont
+              </button>
             )}
           </div>
 
@@ -230,17 +214,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               Contact
             </a>
             <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  if (onSelectPlanUpgrade) onSelectPlanUpgrade('STARTER');
-                }}
-                className="w-full py-2.5 text-center text-xs font-bold rounded-xl border border-blue-500/40 bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center gap-1.5"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Abonamente & Plăți Revolut</span>
-              </button>
               {currentUser ? (
                 <button
                   type="button"
@@ -255,28 +228,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMobileMenuOpen(false);
-                      onOpenAuth('LOGIN');
-                    }}
-                    className="w-full py-2.5 text-center text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
-                  >
-                    Intră în Cont
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMobileMenuOpen(false);
-                      onOpenAuth('REGISTER');
-                    }}
-                    className="w-full py-2.5 text-center text-xs font-bold rounded-xl bg-blue-600 text-white"
-                  >
-                    Creează cont gratuit
-                  </button>
-                </>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenAuth('LOGIN');
+                  }}
+                  className="w-full py-2.5 text-center text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                >
+                  Intră în Cont
+                </button>
               )}
             </div>
           </div>
@@ -963,19 +924,31 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <div className="space-y-2 text-xs">
                 <div className="flex items-center gap-2">
                   <Mail className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                  <a href="mailto:office@developly.pro" className="hover:underline text-slate-800 dark:text-slate-200 font-semibold">
+                  <a
+                    href="mailto:office@developly.pro?subject=Solicitare%20Informații%20/%20Situație%20OfferFlow&body=Bună%20ziua,%0D%0A%0D%0AVă%20contactez%20în%20legătură%20cu%20următoarea%20situație:%0D%0A"
+                    title="Trimite e-mail către echipa de suport OfferFlow"
+                    className="hover:underline text-slate-800 dark:text-slate-200 font-semibold hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                  >
                     office@developly.pro
                   </a>
                 </div>
                 <div className="flex items-center gap-2">
                   <Phone className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                  <a href="tel:0765263860" className="hover:underline text-slate-800 dark:text-slate-200">
+                  <a href="tel:0765263860" className="hover:underline text-slate-800 dark:text-slate-200 hover:text-emerald-600 transition-colors">
                     0765263860
                   </a>
                 </div>
                 <div className="flex items-center gap-2">
                   <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                  <span>Craiova, România</span>
+                  <a
+                    href="https://www.google.com/maps/search/?api=1&query=Craiova,+Romania"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Deschide locația în Google Maps"
+                    className="hover:underline text-slate-800 dark:text-slate-200 hover:text-rose-600 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                  >
+                    Craiova, România
+                  </a>
                 </div>
                 <div className="pt-1 text-[11px] text-slate-400">
                   Catalin Sandu PFA • CUI: 54552543

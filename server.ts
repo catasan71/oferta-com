@@ -178,15 +178,18 @@ app.post('/api/create-revolut-order', async (req, res) => {
 
       if (!response.ok) {
         console.error('Eroare Revolut Order API:', orderData);
-        // Fallback dacă Revolut API returnează eroare temporară
-        const fallbackUrl = plan === 'CLASIC'
-          ? 'https://checkout.revolut.com/payment-link/66c35f26-fed9-4dff-a4ab-edc5e4cb900f'
-          : 'https://checkout.revolut.com/payment-link/7bb72a48-6627-4f55-be6b-9c3327717dca';
+        // Dacă API-ul Revolut returnează eroare sau cheia e sandbox, returnăm eroare clară sau link configurat
+        const configuredUrl = plan === 'CLASIC'
+          ? process.env.REVOLUT_PAYMENT_LINK_CLASIC
+          : process.env.REVOLUT_PAYMENT_LINK_STARTER;
+
         return res.json({
           success: true,
-          orderId: `rev_${Date.now()}`,
-          url: fallbackUrl,
+          orderId: `rev_sim_${Date.now()}`,
+          url: configuredUrl || null,
           amount: amountInRon,
+          isSimulation: !configuredUrl,
+          message: configuredUrl ? 'Link configurat' : 'Mod testare fără 500 lei (simulare directă la 45 / 100 lei)'
         });
       }
 
@@ -203,16 +206,20 @@ app.post('/api/create-revolut-order', async (req, res) => {
       });
     }
 
-    // Dacă cheia nu e setată, folosim linkurile Revolut directe ale lui Cătălin Sandu PFA
-    const directUrl = plan === 'CLASIC'
-      ? 'https://checkout.revolut.com/payment-link/66c35f26-fed9-4dff-a4ab-edc5e4cb900f'
-      : 'https://checkout.revolut.com/payment-link/7bb72a48-6627-4f55-be6b-9c3327717dca';
+    // Dacă cheia API nu este setată în .env: verificăm dacă există link-uri specifice configurate în mediu
+    const customPaymentLink = plan === 'CLASIC'
+      ? process.env.REVOLUT_PAYMENT_LINK_CLASIC
+      : process.env.REVOLUT_PAYMENT_LINK_STARTER;
 
     return res.json({
       success: true,
-      orderId: `rev_direct_${Date.now()}`,
-      url: directUrl,
+      orderId: `rev_test_${Date.now()}`,
+      url: customPaymentLink || null,
       amount: amountInRon,
+      isSimulation: !customPaymentLink,
+      message: customPaymentLink
+        ? 'Redirecționare către linkul dedicat de plată'
+        : `Plată de test pentru suma exactă de ${amountInRon} RON (fără linkuri vechi de 500 lei)`
     });
   } catch (err: any) {
     console.error('Eroare la crearea comenzii Revolut:', err);

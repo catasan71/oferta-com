@@ -94,15 +94,17 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
     initialSelectedPlan === 'CLASIC' ? 100 : 45
   );
 
-  // Date facturare
+  // Date facturare cumpărător (preluate curat din organizație sau completate de client)
   const [tipPersoana, setTipPersoana] = useState<'PJ' | 'PF'>('PJ');
   const [denumire, setDenumire] = useState(
-    organization?.nume || 'SANDU M.I. CĂTĂLIN PERSOANĂ FIZICĂ AUTORIZATĂ'
+    organization?.nume && !organization.nume.includes('CĂTĂLIN') ? organization.nume : ''
   );
-  const [cui, setCui] = useState(organization?.cui || '54552543');
-  const [email, setEmail] = useState('catalinsandu@protonmail.com');
-  const [telefon, setTelefon] = useState('+40765263860');
-  const [adresa, setAdresa] = useState('Craiova, Dolj, Romania');
+  const [cui, setCui] = useState(
+    organization?.cui && organization.cui !== '54552543' ? organization.cui : ''
+  );
+  const [email, setEmail] = useState('');
+  const [telefon, setTelefon] = useState('');
+  const [adresa, setAdresa] = useState(organization?.adresa || '');
 
   // Stare comunicare Revolut API
   const [isOpeningPayment, setIsOpeningPayment] = useState(false);
@@ -164,31 +166,20 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
 
         setStep('AWAITING_PAYMENT');
       } else {
-        // Fallback cu linkul oficial Revolut Business Cătălin Sandu PFA
-        const fallbackUrl = selectedPlan === 'CLASIC'
-          ? 'https://checkout.revolut.com/payment-link/66c35f26-fed9-4dff-a4ab-edc5e4cb900f'
-          : 'https://checkout.revolut.com/payment-link/7bb72a48-6627-4f55-be6b-9c3327717dca';
-
-        setActiveCheckoutUrl(fallbackUrl);
+        // În lipsa unui link extern (mod test/dezvoltare fără cheie Revolut live),
+        // închidem tab-ul gol și intrăm direct pe ecranul de autorizare și emitere proformă la 45 / 100 lei
         if (payWindow && !payWindow.closed) {
-          payWindow.location.href = fallbackUrl;
-        } else {
-          window.open(fallbackUrl, '_blank');
+          payWindow.close();
         }
+        setActiveOrderId(data?.orderId || `rev_test_${Date.now()}`);
         setStep('AWAITING_PAYMENT');
       }
     } catch (err) {
       console.error('Eroare lansare Revolut Checkout:', err);
-      const fallbackUrl = selectedPlan === 'CLASIC'
-        ? 'https://checkout.revolut.com/payment-link/66c35f26-fed9-4dff-a4ab-edc5e4cb900f'
-        : 'https://checkout.revolut.com/payment-link/7bb72a48-6627-4f55-be6b-9c3327717dca';
-
-      setActiveCheckoutUrl(fallbackUrl);
       if (payWindow && !payWindow.closed) {
-        payWindow.location.href = fallbackUrl;
-      } else {
-        window.open(fallbackUrl, '_blank');
+        payWindow.close();
       }
+      setActiveOrderId(`rev_test_${Date.now()}`);
       setStep('AWAITING_PAYMENT');
     } finally {
       setIsOpeningPayment(false);
@@ -408,7 +399,7 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                   required
                   value={denumire}
                   onChange={(e) => setDenumire(e.target.value)}
-                  placeholder="ex: SANDU M.I. CĂTĂLIN PERSOANĂ FIZICĂ AUTORIZATĂ"
+                  placeholder={tipPersoana === 'PJ' ? 'ex: SC Alfa Construct SRL' : 'ex: Ion Popescu'}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                 />
               </div>
@@ -423,7 +414,7 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                     required={tipPersoana === 'PJ'}
                     value={cui}
                     onChange={(e) => setCui(e.target.value)}
-                    placeholder="ex: 54552543"
+                    placeholder="ex: RO12345678"
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                 </div>
@@ -435,7 +426,7 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                     type="tel"
                     value={telefon}
                     onChange={(e) => setTelefon(e.target.value)}
-                    placeholder="ex: +40765263860"
+                    placeholder="ex: 0740 123 456"
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                 </div>
@@ -451,7 +442,7 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="catalinsandu@protonmail.com"
+                    placeholder="ex: contact@firma-dvs.ro"
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                 </div>
@@ -464,7 +455,7 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                     required
                     value={adresa}
                     onChange={(e) => setAdresa(e.target.value)}
-                    placeholder="Craiova, Dolj, România"
+                    placeholder="ex: Str. Aviatorilor nr. 10, București"
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                 </div>
