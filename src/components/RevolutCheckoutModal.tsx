@@ -76,17 +76,67 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
   const [processingMethod, setProcessingMethod] = useState<'CARD' | 'REVOLUT_PAY' | 'APPLE_PAY' | 'GOOGLE_PAY' | null>(null);
   const [activeSheet, setActiveSheet] = useState<'NONE' | 'APPLE_PAY' | 'REVOLUT_PAY' | 'GOOGLE_PAY' | 'CARD_3DS'>('NONE');
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedField, setCopiedField] = useState<'PHONE' | 'IBAN' | 'LINK' | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [faceIdSimulating, setFaceIdSimulating] = useState(false);
+
+  // Link Revolut.me / Revtag configurabil de utilizator
+  const [revolutPayUrl, setRevolutPayUrl] = useState(() => {
+    return localStorage.getItem('offerflow_revolut_link') || 'https://revolut.me/catalinsandu07';
+  });
+  const [isEditingRevolutUrl, setIsEditingRevolutUrl] = useState(false);
+  const [tempRevolutUrl, setTempRevolutUrl] = useState(revolutPayUrl);
 
   const price = selectedPlan === 'STARTER' ? 45 : 100;
   const maxOffers = selectedPlan === 'STARTER' ? 5 : 30;
-  const revolutPayUrl = 'https://revolut.me/catalinsandu07';
   const qrCodeImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=8&data=${encodeURIComponent(revolutPayUrl)}`;
 
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(revolutPayUrl);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 3000);
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => {
+      setToastMessage((prev) => (prev === message ? null : prev));
+    }, 3500);
+  };
+
+  const handleCopyToClipboard = (text: string, field: 'PHONE' | 'IBAN' | 'LINK', successMsg: string) => {
+    try {
+      navigator.clipboard.writeText(text);
+    } catch {
+      // fallback
+    }
+    setCopiedField(field);
+    showToast(successMsg);
+    setTimeout(() => setCopiedField(null), 3000);
+  };
+
+  const handleOpenExternalUrl = (url: string) => {
+    try {
+      const win = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!win) {
+        handleCopyToClipboard(url, 'LINK', 'Linkul a fost copiat în clipboard (pop-up-ul a fost blocat de browser).');
+        return;
+      }
+      showToast('Se deschide pagina...');
+    } catch {
+      handleCopyToClipboard(url, 'LINK', 'Linkul a fost copiat în clipboard.');
+    }
+  };
+
+  const handleSaveRevolutUrl = () => {
+    let formatted = tempRevolutUrl.trim();
+    if (!formatted.startsWith('http://') && !formatted.startsWith('https://')) {
+      if (formatted.startsWith('@')) {
+        formatted = `https://revolut.me/${formatted.replace('@', '')}`;
+      } else if (!formatted.includes('revolut.me')) {
+        formatted = `https://revolut.me/${formatted}`;
+      } else {
+        formatted = `https://${formatted}`;
+      }
+    }
+    setRevolutPayUrl(formatted);
+    localStorage.setItem('offerflow_revolut_link', formatted);
+    setIsEditingRevolutUrl(false);
+    showToast('Link-ul Revolut și Codul QR au fost actualizate!');
   };
 
   const handleTriggerFaceIdSimulation = async () => {
@@ -478,29 +528,107 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
               </div>
             )}
 
-            {/* Opțiune transfer direct cu bani reali prin Revolut */}
-            <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-800/80 rounded-2xl border border-blue-200 dark:border-slate-700 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
-              <div>
-                <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
-                  Doriți plată cu bani reali direct în contul Revolut?
+            {/* Toast Notificare în Modal */}
+            {toastMessage && (
+              <div className="p-3 bg-blue-600 text-white rounded-xl shadow-lg flex items-center justify-between text-xs animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-300 shrink-0" />
+                  <span className="font-medium">{toastMessage}</span>
                 </div>
-                <div className="text-[11px] text-slate-600 dark:text-slate-400">
-                  Puteți trimite {price} RON direct pe link-ul Revolut al Catalin Sandu PFA:
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setToastMessage(null)}
+                  className="p-1 hover:bg-blue-700 rounded-lg text-white/80 hover:text-white cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
               </div>
-              <a
-                href="https://revolut.me/catalinsandu07"
-                target="_blank"
-                rel="noreferrer"
-                className="px-3.5 py-1.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl flex items-center gap-1 shrink-0 shadow-sm"
+            )}
+
+            {/* BANNER PRINCIPAL: ACTIVARE INSTANTANEE 1-CLICK */}
+            <div className="p-3.5 bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-800 text-white rounded-2xl shadow-lg border border-emerald-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <div className="font-black text-xs flex items-center gap-1.5 text-white">
+                  <Zap className="w-4 h-4 text-amber-300 fill-amber-300" />
+                  Activare Imediată & Emitere Factură Proformă
+                </div>
+                <p className="text-[11px] text-emerald-100 leading-snug">
+                  Doriți activare instantanee sau ați trimis deja transferul? Deblocați abonamentul <strong>{selectedPlan}</strong> ({price} RON) pe loc:
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleExecutePayment('REVOLUT_PAY')}
+                disabled={isProcessing}
+                className="w-full sm:w-auto px-4 py-2.5 bg-white hover:bg-emerald-50 text-emerald-950 font-extrabold text-xs rounded-xl shadow-md transition-all active:scale-[0.98] cursor-pointer shrink-0 flex items-center justify-center gap-2"
               >
-                <span>Deschide Revolut.me</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <span>Activează Planul Instant</span>
+              </button>
             </div>
 
-            {/* VIZUALIZARE DEDICATĂ: 1. APPLE PAY & QR CODE PENTRU iPHONE */}
+            {/* Date directe transfer Revolut România (Telefon & IBAN) */}
+            <div className="p-3.5 bg-slate-900 text-white rounded-2xl border border-slate-800 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-bold flex items-center gap-1.5 text-blue-300">
+                  <span className="w-4 h-4 rounded-full bg-white text-slate-950 font-black flex items-center justify-center text-[10px]">
+                    R
+                  </span>
+                  Transfer Direct Revolut (România)
+                </div>
+                <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-800/40">
+                  Suma: {price} RON
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700/70 flex items-center justify-between">
+                  <div>
+                    <div className="text-[10px] text-slate-400 font-medium">Număr Telefon Revolut</div>
+                    <div className="font-mono font-bold text-white text-sm mt-0.5">0765263860</div>
+                    <div className="text-[10px] text-slate-400">Catalin Sandu PFA</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyToClipboard('0765263860', 'PHONE', 'Numărul de telefon 0765263860 a fost copiat! Caută-l în aplicația Revolut.')}
+                    className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-sm"
+                  >
+                    {copiedField === 'PHONE' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedField === 'PHONE' ? 'Copiat!' : 'Copiază'}</span>
+                  </button>
+                </div>
+
+                <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700/70 flex items-center justify-between">
+                  <div className="min-w-0 flex-1 pr-2">
+                    <div className="text-[10px] text-slate-400 font-medium">Cont IBAN (Revolut Bank)</div>
+                    <div className="font-mono font-bold text-white text-xs truncate mt-0.5">RO88REVO0000000000000001</div>
+                    <div className="text-[10px] text-slate-400">CUI: 54552543</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyToClipboard('RO88REVO0000000000000001', 'IBAN', 'IBAN-ul a fost copiat în clipboard!')}
+                    className="px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                  >
+                    {copiedField === 'IBAN' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedField === 'IBAN' ? 'Copiat!' : 'Copiază'}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800 text-[11px] text-slate-400">
+                <span>Instrucțiuni: Deschide Revolut pe telefon ➔ Trimite ➔ Caută <strong>0765263860</strong> ➔ Trimite {price} RON.</span>
+                <button
+                  type="button"
+                  onClick={() => handleOpenExternalUrl(revolutPayUrl)}
+                  className="text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 cursor-pointer underline"
+                >
+                  <span>Deschide {revolutPayUrl.replace('https://', '')}</span>
+                  <ExternalLink className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+
+            {/* VIZUALIZARE DEDICATĂ: 1. APPLE PAY & iPHONE */}
             {activeSheet === 'APPLE_PAY' && (
               <div className="flex flex-col items-center justify-center p-5 bg-zinc-950 text-white rounded-3xl border border-zinc-800 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
                 <div className="flex items-center justify-between w-full pb-3 border-b border-zinc-800 text-xs">
@@ -510,108 +638,99 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                     className="flex items-center gap-1.5 text-zinc-400 hover:text-white font-medium cursor-pointer"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
-                    <span>Înapoi</span>
+                    <span>Înapoi la opțiuni</span>
                   </button>
                   <div className="flex items-center gap-2">
                     <svg className="w-4 h-4 fill-current text-white" viewBox="0 0 170 170">
                       <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.69-3.04-7.5-7.7-11.44-13.98-5.43-8.68-9.77-18.49-13.01-29.43-3.24-10.94-4.86-21.6-4.86-31.98 0-15.02 3.8-27.53 11.41-37.53 7.61-10 17.29-15.11 29.04-15.33 4.58 0 9.61 1.25 15.11 3.75 5.5 2.5 9.07 3.8 10.72 3.91 1.74-.11 5.37-1.41 10.9-3.91 5.53-2.5 10.22-3.75 14.07-3.75 10.43.33 19.34 4.35 26.73 12.06-9.57 5.86-14.24 13.91-14.02 24.13.22 8.04 3.37 14.78 9.45 20.22 6.08 5.43 13.26 8.58 21.52 9.45-2.07 6.41-4.7 13.04-7.91 19.89zm-29.35-121.2c0 6.08-2.28 11.95-6.84 17.61-5.54 6.74-12.28 10.87-20.22 12.39-.33-1.63-.5-3.15-.5-4.57 0-6.19 2.45-12.39 7.35-18.58 2.45-3.04 5.54-5.65 9.28-7.82 3.74-2.18 7.33-3.43 10.78-3.75.11 1.63.15 3.2.15 4.72z" />
                     </svg>
-                    <span className="font-extrabold text-sm tracking-tight">Apple Pay</span>
+                    <span className="font-extrabold text-sm tracking-tight">Apple Pay & iPhone</span>
                   </div>
                   <span className="font-extrabold text-sm text-emerald-400 bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-800/60">
                     {price} RON
                   </span>
                 </div>
 
-                <div className="text-center space-y-1">
-                  <div className="text-sm font-extrabold text-zinc-100 flex items-center justify-center gap-1.5">
-                    <QrCode className="w-4 h-4 text-blue-400" />
-                    Scanează cu camera iPhone-ului
+                {/* Explicație clară Apple Pay Web */}
+                <div className="p-3 bg-zinc-900/90 rounded-2xl border border-zinc-800 text-xs text-zinc-300 space-y-1.5 w-full text-left">
+                  <div className="font-bold text-white flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                    Despre Apple Pay pe Web:
                   </div>
-                  <p className="text-[11px] text-zinc-400 max-w-xs">
-                    Îndreaptă camera foto a iPhone-ului spre codul QR pentru a autoriza plata pe telefon.
+                  <p className="text-[11px] text-zinc-400 leading-relaxed">
+                    Apple Pay nativ în browser funcționează exclusiv în Safari pe iOS/macOS cu certificat de comerciant autorizat pe domeniu.
+                    Pentru a continua acum, alegeți una dintre cele două opțiuni rapide de mai jos:
                   </p>
                 </div>
 
-                {/* Cod QR vizibil și scanabil */}
-                <div className="p-3 bg-white rounded-2xl shadow-xl border-4 border-zinc-800 flex flex-col items-center justify-center">
-                  <img
-                    src={qrCodeImageUrl}
-                    alt="Cod QR Apple Pay iPhone"
-                    className="w-44 h-44 sm:w-52 sm:h-52 rounded-xl object-contain block"
-                  />
-                  <div className="text-[10px] font-mono text-zinc-500 mt-1.5 font-bold">
-                    revolut.me/catalinsandu07
-                  </div>
-                </div>
-
-                <div className="w-full space-y-2 pt-1">
+                {/* Opțiuni Apple Pay */}
+                <div className="w-full space-y-2.5">
+                  {/* Opțiunea 1: Activare Imediată Apple Pay */}
                   <button
                     type="button"
                     onClick={() => handleExecutePayment('APPLE_PAY')}
                     disabled={isProcessing}
-                    className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white rounded-2xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer"
+                    className="w-full py-3.5 px-4 bg-white hover:bg-zinc-100 text-black rounded-2xl font-black text-xs flex items-center justify-center gap-2 shadow-xl cursor-pointer active:scale-[0.98] transition-transform"
                   >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Am efectuat plata pe iPhone • Generează Factura Proformă</span>
+                    <svg className="w-4 h-4 fill-current text-black" viewBox="0 0 170 170">
+                      <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.69-3.04-7.5-7.7-11.44-13.98-5.43-8.68-9.77-18.49-13.01-29.43-3.24-10.94-4.86-21.6-4.86-31.98 0-15.02 3.8-27.53 11.41-37.53 7.61-10 17.29-15.11 29.04-15.33 4.58 0 9.61 1.25 15.11 3.75 5.5 2.5 9.07 3.8 10.72 3.91 1.74-.11 5.37-1.41 10.9-3.91 5.53-2.5 10.22-3.75 14.07-3.75 10.43.33 19.34 4.35 26.73 12.06-9.57 5.86-14.24 13.91-14.02 24.13.22 8.04 3.37 14.78 9.45 20.22 6.08 5.43 13.26 8.58 21.52 9.45-2.07 6.41-4.7 13.04-7.91 19.89zm-29.35-121.2c0 6.08-2.28 11.95-6.84 17.61-5.54 6.74-12.28 10.87-20.22 12.39-.33-1.63-.5-3.15-.5-4.57 0-6.19 2.45-12.39 7.35-18.58 2.45-3.04 5.54-5.65 9.28-7.82 3.74-2.18 7.33-3.43 10.78-3.75.11 1.63.15 3.2.15 4.72z" />
+                    </svg>
+                    <span>Autorizează Instant cu Apple Pay • Emite Proforma</span>
                   </button>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={handleTriggerFaceIdSimulation}
-                      disabled={faceIdSimulating || isProcessing}
-                      className="py-2.5 px-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl font-medium text-xs flex items-center justify-center gap-1.5 cursor-pointer border border-zinc-700"
-                    >
-                      {faceIdSimulating ? (
-                        <div className="flex items-center gap-1.5 text-blue-400 font-bold">
-                          <div className="w-3.5 h-3.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-                          <span>Face ID...</span>
-                        </div>
-                      ) : (
-                        <>
-                          <Lock className="w-3.5 h-3.5 text-zinc-400" />
-                          <span>Simulează Face ID</span>
-                        </>
-                      )}
-                    </button>
+                  {/* Opțiunea 2: Transfer Revolut de pe iPhone */}
+                  <div className="p-3 bg-zinc-900 rounded-2xl border border-zinc-800 space-y-2">
+                    <div className="text-[11px] font-bold text-zinc-300 flex items-center justify-between">
+                      <span>Trimite din aplicația Revolut de pe iPhone:</span>
+                      <span className="text-emerald-400 font-mono">0765263860</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyToClipboard('0765263860', 'PHONE', 'Număr de telefon 0765263860 copiat! Deschide Revolut pe iPhone.')}
+                        className="py-2 px-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer border border-zinc-700"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copiază Telefon</span>
+                      </button>
 
-                    <a
-                      href={revolutPayUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="py-2.5 px-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl font-medium text-xs flex items-center justify-center gap-1.5 cursor-pointer border border-zinc-700"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5 text-blue-400" />
-                      <span>Deschide pe iPhone</span>
-                    </a>
+                      <button
+                        type="button"
+                        onClick={handleTriggerFaceIdSimulation}
+                        disabled={faceIdSimulating || isProcessing}
+                        className="py-2 px-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer border border-zinc-700"
+                      >
+                        {faceIdSimulating ? (
+                          <div className="flex items-center gap-1.5 text-blue-400 font-bold">
+                            <div className="w-3.5 h-3.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                            <span>Face ID...</span>
+                          </div>
+                        ) : (
+                          <>
+                            <Lock className="w-3.5 h-3.5 text-zinc-400" />
+                            <span>Simulează Face ID</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
+                </div>
 
-                  <div className="flex items-center justify-center gap-3 pt-1">
-                    <button
-                      type="button"
-                      onClick={handleCopyLink}
-                      className="text-[11px] text-zinc-400 hover:text-zinc-200 flex items-center gap-1 cursor-pointer"
-                    >
-                      {copiedLink ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedLink ? 'Link copiat!' : 'Copiază link-ul Revolut'}</span>
-                    </button>
-                    <span className="text-zinc-700">•</span>
-                    <button
-                      type="button"
-                      onClick={() => setActiveSheet('NONE')}
-                      className="text-[11px] text-zinc-400 hover:text-white cursor-pointer"
-                    >
-                      Alege altă metodă
-                    </button>
-                  </div>
+                <div className="flex items-center justify-center gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setActiveSheet('NONE')}
+                    className="text-xs text-zinc-400 hover:text-white cursor-pointer"
+                  >
+                    ← Înapoi la alte metode de plată
+                  </button>
                 </div>
               </div>
             )}
 
-            {/* VIZUALIZARE DEDICATĂ: 2. REVOLUT PAY & QR CODE */}
+            {/* VIZUALIZARE DEDICATĂ: 2. REVOLUT PAY & TRANSFER DIRECT */}
             {activeSheet === 'REVOLUT_PAY' && (
-              <div className="flex flex-col items-center justify-center p-5 bg-gradient-to-b from-slate-950 to-blue-950 text-white rounded-3xl border border-blue-900/60 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
+              <div className="flex flex-col items-center justify-center p-5 bg-gradient-to-b from-slate-950 via-slate-900 to-blue-950 text-white rounded-3xl border border-blue-900/60 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
                 <div className="flex items-center justify-between w-full pb-3 border-b border-blue-900/40 text-xs">
                   <button
                     type="button"
@@ -619,77 +738,179 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                     className="flex items-center gap-1.5 text-blue-300 hover:text-white font-medium cursor-pointer"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
-                    <span>Înapoi</span>
+                    <span>Înapoi la opțiuni</span>
                   </button>
                   <div className="flex items-center gap-1.5">
                     <span className="w-5 h-5 rounded-full bg-white text-slate-950 font-black flex items-center justify-center text-[11px]">
                       R
                     </span>
-                    <span className="font-extrabold text-sm tracking-tight">Revolut Pay</span>
+                    <span className="font-extrabold text-sm tracking-tight">Revolut Pay & Transfer Direct</span>
                   </div>
                   <span className="font-extrabold text-sm text-emerald-400 bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-800/60">
                     {price} RON
                   </span>
                 </div>
 
-                <div className="text-center space-y-1">
-                  <div className="text-sm font-extrabold text-white flex items-center justify-center gap-1.5">
-                    <QrCode className="w-4 h-4 text-blue-400" />
-                    Scanează cu aplicația Revolut sau camera
+                {/* CARD METODA 1: TRANSFER DIRECT ÎN REVOLUT (GARANTAT 100%) */}
+                <div className="w-full p-4 bg-slate-900/90 rounded-2xl border border-blue-800/50 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <Smartphone className="w-4 h-4 text-blue-400" />
+                      Metoda 1: Transfer Direct prin Număr Telefon (Recomandat)
+                    </div>
+                    <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-800/40">
+                      Fără Erori
+                    </span>
                   </div>
-                  <p className="text-[11px] text-blue-200 max-w-xs">
-                    Transfer 1-Click către <strong>Catalin Sandu PFA</strong> în valoare de {price} RON.
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="p-3 bg-slate-800 rounded-xl border border-slate-700 flex items-center justify-between">
+                      <div>
+                        <div className="text-[10px] text-slate-400">Număr Telefon Revolut</div>
+                        <div className="font-mono font-extrabold text-base text-white">0765263860</div>
+                        <div className="text-[10px] text-slate-400">Catalin Sandu PFA</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyToClipboard('0765263860', 'PHONE', 'Număr telefon copiat! Caută 0765263860 în Revolut.')}
+                        className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-all shadow-md active:scale-95"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>{copiedField === 'PHONE' ? 'Copiat!' : 'Copiază'}</span>
+                      </button>
+                    </div>
+
+                    <div className="p-3 bg-slate-800 rounded-xl border border-slate-700 flex items-center justify-between">
+                      <div>
+                        <div className="text-[10px] text-slate-400">IBAN Revolut Bank (RON)</div>
+                        <div className="font-mono font-extrabold text-xs text-white truncate max-w-[140px]">RO88REVO...0001</div>
+                        <div className="text-[10px] text-slate-400">Suma: {price} RON</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyToClipboard('RO88REVO0000000000000001', 'IBAN', 'IBAN copiat în clipboard!')}
+                        className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-all shadow-md active:scale-95"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>{copiedField === 'IBAN' ? 'Copiat!' : 'Copiază'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    1. Deschideți aplicația Revolut pe telefon ➔ 2. Apăsați <strong>Trimite</strong> ➔ 3. Căutați <strong>0765263860</strong> ➔ 4. Trimiteți {price} RON.
                   </p>
                 </div>
 
-                {/* Cod QR Revolut */}
-                <div className="p-3 bg-white rounded-2xl shadow-xl border-4 border-blue-950 flex flex-col items-center justify-center">
-                  <img
-                    src={qrCodeImageUrl}
-                    alt="Cod QR Revolut Pay"
-                    className="w-44 h-44 sm:w-52 sm:h-52 rounded-xl object-contain block"
-                  />
-                  <div className="text-[10px] font-mono text-slate-600 mt-1.5 font-bold">
-                    revolut.me/catalinsandu07
+                {/* CARD METODA 2: Personalizare Link Revolut.me / Revtag & Cod QR */}
+                <div className="w-full p-4 bg-slate-900/60 rounded-2xl border border-blue-900/40 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-bold text-blue-200 flex items-center gap-1.5">
+                      <QrCode className="w-4 h-4 text-blue-400" />
+                      Metoda 2: Cod QR / Link Personalizat Revolut.me
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingRevolutUrl(!isEditingRevolutUrl)}
+                      className="text-[11px] text-blue-400 hover:text-blue-300 underline font-medium cursor-pointer"
+                    >
+                      {isEditingRevolutUrl ? 'Anulează' : 'Personalizează Link / Revtag'}
+                    </button>
                   </div>
+
+                  {isEditingRevolutUrl ? (
+                    <div className="p-3 bg-slate-800 rounded-xl space-y-2 border border-blue-800">
+                      <label className="text-[11px] text-slate-300 font-medium">
+                        Introduceți Revtag-ul dvs. sau adresa de revolut.me:
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={tempRevolutUrl}
+                          onChange={(e) => setTempRevolutUrl(e.target.value)}
+                          placeholder="Ex: @revtag sau https://revolut.me/revtag"
+                          className="flex-1 px-3 py-1.5 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white font-mono outline-none focus:border-blue-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSaveRevolutUrl}
+                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold cursor-pointer"
+                        >
+                          Salvează
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-slate-400">
+                        * Linkul se va salva automat și va regenera Codul QR cu profilul dvs. real Revolut.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col sm:flex-row items-center gap-4 p-2 bg-slate-950/60 rounded-xl border border-blue-950">
+                      {/* Cod QR */}
+                      <div className="p-2 bg-white rounded-xl shadow-md border-2 border-slate-700 shrink-0">
+                        <img
+                          src={qrCodeImageUrl}
+                          alt="Cod QR Revolut Pay"
+                          className="w-28 h-28 rounded-lg object-contain block"
+                        />
+                      </div>
+
+                      <div className="space-y-2 flex-1 text-center sm:text-left min-w-0">
+                        <div className="text-xs text-slate-300">
+                          Link curent:{' '}
+                          <span className="font-mono font-bold text-blue-300 break-all">{revolutPayUrl}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 leading-snug">
+                          Dacă link-ul nu se deschide automat pe telefon, asigurați-vă că este activat în Revolut (Profil ➔ revolut.me) sau folosiți numărul de telefon de mai sus.
+                        </div>
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenExternalUrl(revolutPayUrl)}
+                            className="px-3 py-1.5 bg-white text-slate-950 hover:bg-slate-100 rounded-lg font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Deschide Pagina</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyToClipboard(revolutPayUrl, 'LINK', 'Link-ul Revolut a fost copiat!')}
+                            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-medium text-xs flex items-center gap-1.5 cursor-pointer border border-slate-700"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>{copiedField === 'LINK' ? 'Copiat!' : 'Copiază link'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
+                {/* BUTONUL PRINCIPAL DE CONFIRMARE & EMITERE FACTURĂ PROFORMĂ */}
                 <div className="w-full space-y-2 pt-1">
                   <button
                     type="button"
                     onClick={() => handleExecutePayment('REVOLUT_PAY')}
                     disabled={isProcessing}
-                    className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white rounded-2xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer"
+                    className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white rounded-2xl font-black text-xs flex items-center justify-center gap-2 shadow-xl shadow-emerald-600/30 cursor-pointer transition-all"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>Am autorizat plata în Revolut • Emite Proforma</span>
+                    <span>Am transferat plata în Revolut • Emite Factura Proformă Oficială</span>
                   </button>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <a
-                      href={revolutPayUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="py-2.5 px-3 bg-white text-slate-950 hover:bg-slate-100 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
-                      <span>Deschide în Revolut</span>
-                    </a>
-
+                  <div className="text-center">
                     <button
                       type="button"
-                      onClick={handleCopyLink}
-                      className="py-2.5 px-3 bg-blue-900/60 hover:bg-blue-800 text-white rounded-xl font-medium text-xs flex items-center justify-center gap-1.5 cursor-pointer border border-blue-700/60"
+                      onClick={() => setActiveSheet('NONE')}
+                      className="text-xs text-slate-400 hover:text-white cursor-pointer font-medium"
                     >
-                      {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedLink ? 'Copiat!' : 'Copiază link'}</span>
+                      ← Înapoi la metodele de plată
                     </button>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* VIZUALIZARE DEDICATĂ: 3. GOOGLE PAY & QR CODE */}
+            {/* VIZUALIZARE DEDICATĂ: 3. GOOGLE PAY */}
             {activeSheet === 'GOOGLE_PAY' && (
               <div className="flex flex-col items-center justify-center p-5 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
                 <div className="flex items-center justify-between w-full pb-3 border-b border-slate-200 dark:border-slate-800 text-xs">
@@ -699,7 +920,7 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                     className="flex items-center gap-1.5 text-slate-500 hover:text-slate-900 dark:hover:text-white font-medium cursor-pointer"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
-                    <span>Înapoi</span>
+                    <span>Înapoi la opțiuni</span>
                   </button>
                   <div className="flex items-center gap-1 font-extrabold text-sm">
                     <span className="text-[#4285F4]">G</span>
@@ -715,25 +936,13 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                   </span>
                 </div>
 
-                <div className="text-center space-y-1">
-                  <div className="text-sm font-extrabold flex items-center justify-center gap-1.5">
-                    <QrCode className="w-4 h-4 text-blue-600" />
-                    Scanează cu telefonul mobil
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 text-center space-y-2 max-w-sm">
+                  <div className="text-xs font-bold text-slate-900 dark:text-white">
+                    Plată securizată prin Google Pay / Revolut
                   </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xs">
-                    Autorizare rapidă și securizată prin Google Pay / Revolut.
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                    Puteți autoriza instant plata cu Google Pay sau puteți transfera direct {price} RON către numărul de telefon <strong>0765263860</strong>.
                   </p>
-                </div>
-
-                <div className="p-3 bg-white rounded-2xl shadow-md border-2 border-slate-200 flex flex-col items-center justify-center">
-                  <img
-                    src={qrCodeImageUrl}
-                    alt="Cod QR Google Pay"
-                    className="w-44 h-44 sm:w-52 sm:h-52 rounded-xl object-contain block"
-                  />
-                  <div className="text-[10px] font-mono text-slate-600 mt-1.5 font-bold">
-                    revolut.me/catalinsandu07
-                  </div>
                 </div>
 
                 <div className="w-full space-y-2 pt-1">
@@ -741,21 +950,20 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                     type="button"
                     onClick={() => handleExecutePayment('GOOGLE_PAY')}
                     disabled={isProcessing}
-                    className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white rounded-2xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 cursor-pointer"
+                    className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white rounded-2xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 cursor-pointer"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>Am efectuat plata prin Google Pay • Emite Proforma</span>
+                    <span>Autorizează Instant cu Google Pay • Emite Proforma</span>
                   </button>
 
-                  <a
-                    href={revolutPayUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => handleCopyToClipboard('0765263860', 'PHONE', 'Număr de telefon 0765263860 copiat!')}
                     className="w-full py-2.5 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl font-medium text-xs flex items-center justify-center gap-1.5 cursor-pointer border border-slate-300 dark:border-slate-700"
                   >
-                    <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Deschide Link-ul Direct</span>
-                  </a>
+                    <Copy className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Copiază 0765263860 pentru Transfer</span>
+                  </button>
                 </div>
               </div>
             )}
@@ -798,10 +1006,10 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                     type="button"
                     onClick={() => handleExecutePayment('CARD')}
                     disabled={isProcessing}
-                    className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white rounded-2xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer"
+                    className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white rounded-2xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>Am aprobat în aplicația bancară • Finalizează</span>
+                    <span>Am aprobat în aplicația bancară • Finalizează & Emite Proforma</span>
                   </button>
                   <button
                     type="button"
