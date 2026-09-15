@@ -26,6 +26,8 @@ import { ThemeSelectorModal } from './components/ThemeSelectorModal.tsx';
 import { LandingPage } from './components/LandingPage.tsx';
 import { AuthModal } from './components/AuthModal.tsx';
 import { LegalModal, LegalTab } from './components/LegalModal.tsx';
+import { QuoteNotFoundView } from './components/QuoteNotFoundView.tsx';
+import { decodeQuoteFromHash } from './lib/portableLink.ts';
 import { getThemeClasses } from './lib/themes.ts';
 
 export function App() {
@@ -131,10 +133,36 @@ export function App() {
     return initialCatalog;
   });
 
-  // Salvare automată în localStorage
+  // Sincronizare inițială cu serverul la montare
+  useEffect(() => {
+    fetch('/api/quotes')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.quotes) && data.quotes.length > 0) {
+          setQuotes((current) => {
+            const map = new Map<string, Quote>();
+            // 1. Încărcăm ofertele de pe server
+            data.quotes.forEach((q: Quote) => map.set(q.id, q));
+            // 2. Îmbinăm cu cele locale din browser
+            current.forEach((q: Quote) => map.set(q.id, q));
+            return Array.from(map.values());
+          });
+        }
+      })
+      .catch(() => {
+        // Ignorăm erorile de rețea temporare
+      });
+  }, []);
+
+  // Salvare automată în localStorage și sincronizare pe server
   useEffect(() => {
     try {
       localStorage.setItem('offerflow_quotes', JSON.stringify(quotes));
+      fetch('/api/quotes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(quotes),
+      }).catch(() => {});
     } catch (e) {
       console.error(e);
     }
@@ -191,7 +219,14 @@ export function App() {
     const path = window.location.pathname;
     const hash = window.location.hash;
     const searchParams = new URLSearchParams(window.location.search);
-    if (path.includes('/view/') || hash.includes('/view/') || searchParams.has('token') || searchParams.has('view')) {
+    if (
+      path.includes('/view/') ||
+      hash.includes('/view/') ||
+      hash.includes('#d=') ||
+      searchParams.has('token') ||
+      searchParams.has('view') ||
+      searchParams.has('d')
+    ) {
       return 'PUBLIC_VIEW';
     }
     // Altfel, dacă utilizatorul este deja logat, intră direct în Dashboard
@@ -207,6 +242,9 @@ export function App() {
   const [activeQuoteForView, setActiveQuoteForView] = useState<Quote | null>(null);
   const [activeQuoteForEdit, setActiveQuoteForEdit] = useState<Quote | null>(null);
   const [isClientRoute, setIsClientRoute] = useState(false);
+  const [requestedToken, setRequestedToken] = useState<string>('');
+  const [isSearchingServer, setIsSearchingServer] = useState<boolean>(false);
+  const [quoteNotFound, setQuoteNotFound] = useState<boolean>(false);
 
   // Modale de sistem
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -219,6 +257,78 @@ export function App() {
   const [isLegalModalOpen, setIsLegalModalOpen] = useState(false);
   const [activeLegalTab, setActiveLegalTab] = useState<LegalTab>('TERMS');
 
+  // Funcție de căutare și încărcare robustă a ofertei
+  const loadPublicQuote = async (token: string, rawHash: string, searchStr: string) => {
+    // 1. Verificăm dacă există payload portabil în hash (#d=...) sau query (?d=...)
+    const hashOrQuery = rawHash.includes('d=') ? rawHash : searchStr.includes('d=') ? searchStr : '';
+    if (hashOrQuery) {
+      const decoded = decodeQuoteFromHash(hashOrQuery);
+      if (decoded) {
+        setActiveQuoteForView(decoded);
+        setCurrentView('PUBLIC_VIEW');
+        setIsClientRoute(true);
+        setQuoteNotFound(false);
+        setIsSearchingServer(false);
+        // Sincronizăm și local și pe server
+        setQuotes((prev) => {
+          if (prev.some((q) => q.id === decoded.id || q.public_token === decoded.public_token)) {
+            return prev.map((q) => (q.id === decoded.id ? decoded : q));
+          }
+          return [decoded, ...prev];
+        });
+        fetch('/api/quotes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify([decoded]),
+        }).catch(() => {});
+        return;
+      }
+    }
+
+    if (!token) return;
+    setRequestedToken(token);
+
+    // 2. Verificăm în ofertele existente în starea curentă din memorie
+    const local = quotes.find(
+      (q) => q.public_token === token || q.id === token || q.numar_oferta === token
+    );
+    if (local) {
+      setActiveQuoteForView(local);
+      setCurrentView('PUBLIC_VIEW');
+      setIsClientRoute(true);
+      setQuoteNotFound(false);
+      setIsSearchingServer(false);
+      return;
+    }
+
+    // 3. Dacă nu este local, căutăm pe serverul persistent (/api/quotes/:token)
+    setIsSearchingServer(true);
+    setCurrentView('PUBLIC_VIEW');
+    setIsClientRoute(true);
+    setQuoteNotFound(false);
+
+    try {
+      const res = await fetch(`/api/quotes/${encodeURIComponent(token)}`);
+      if (!res.ok) throw new Error(`Status ${res.status}`);
+      const data = await res.json();
+      if (data.success && data.quote) {
+        setActiveQuoteForView(data.quote);
+        setQuoteNotFound(false);
+        setQuotes((prev) => {
+          if (prev.some((q) => q.id === data.quote.id)) return prev;
+          return [data.quote, ...prev];
+        });
+      } else {
+        setQuoteNotFound(true);
+      }
+    } catch (err) {
+      console.warn('Nu s-a putut încărca oferta de pe server:', err);
+      setQuoteNotFound(true);
+    } finally {
+      setIsSearchingServer(false);
+    }
+  };
+
   // Verificare URL hash, searchParams sau path token la încărcare
   useEffect(() => {
     const path = window.location.pathname;
@@ -227,20 +337,15 @@ export function App() {
     let token = searchParams.get('token') || searchParams.get('view') || '';
 
     if (!token && path.includes('/view/')) {
-      token = path.split('/view/')[1]?.split('/')[0]?.split('?')[0] || '';
+      token = path.split('/view/')[1]?.split('/')[0]?.split('?')[0]?.split('#')[0] || '';
     } else if (!token && hash.includes('/view/')) {
-      token = hash.split('/view/')[1]?.split('/')[0]?.split('?')[0] || '';
+      token = hash.split('/view/')[1]?.split('/')[0]?.split('?')[0]?.split('#')[0] || '';
     }
 
-    if (token) {
-      const found = quotes.find((q) => q.public_token === token) || quotes[0];
-      if (found) {
-        setActiveQuoteForView(found);
-        setCurrentView('PUBLIC_VIEW');
-        setIsClientRoute(true);
-      }
+    if (token || hash.includes('d=') || searchParams.has('d')) {
+      loadPublicQuote(token, hash, window.location.search);
     }
-  }, [quotes]);
+  }, [quotes.length]);
 
   // Autentificare reușită
   const handleSuccessLogin = (user: User, orgName?: string, orgCui?: string) => {
@@ -485,16 +590,30 @@ export function App() {
             )}
 
             {/* VEDERE 5: Pagina Publică a Ofertei (/view/[token]) */}
-            {currentView === 'PUBLIC_VIEW' && activeQuoteForView && (
-              <PublicQuoteView
-                quote={activeQuoteForView}
-                subscriptionPlan={subscription.plan}
-                onUpdateQuote={handleUpdateQuote}
-                onBackToDashboard={
-                  isClientRoute ? undefined : () => setCurrentView(currentUser ? 'DASHBOARD' : 'LANDING')
-                }
-                isClientView={isClientRoute}
-              />
+            {currentView === 'PUBLIC_VIEW' && (
+              activeQuoteForView ? (
+                <PublicQuoteView
+                  quote={activeQuoteForView}
+                  subscriptionPlan={subscription.plan}
+                  onUpdateQuote={handleUpdateQuote}
+                  onBackToDashboard={
+                    isClientRoute ? undefined : () => setCurrentView(currentUser ? 'DASHBOARD' : 'LANDING')
+                  }
+                  isClientView={isClientRoute}
+                />
+              ) : (
+                <QuoteNotFoundView
+                  token={requestedToken}
+                  isCheckingServer={isSearchingServer}
+                  onRetry={() => loadPublicQuote(requestedToken, window.location.hash, window.location.search)}
+                  onExploreDemo={() => {
+                    const demo = quotes[0] || initialQuotes[0];
+                    setActiveQuoteForView(demo);
+                    setQuoteNotFound(false);
+                  }}
+                  onGoHome={() => setCurrentView(currentUser ? 'DASHBOARD' : 'LANDING')}
+                />
+              )
             )}
           </main>
         </>

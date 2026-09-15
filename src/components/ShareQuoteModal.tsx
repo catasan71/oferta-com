@@ -16,10 +16,16 @@ import {
   CheckCheck,
   CheckCircle2,
   Code,
+  Download,
+  Smartphone,
+  Globe,
+  Loader2,
 } from 'lucide-react';
 import { Quote } from '../types.ts';
 import { formatCurrency, formatDate } from '../lib/calculations.ts';
 import { generatePlainTextEmail, generateHtmlEmail } from '../lib/emailTemplate.ts';
+import { encodeQuoteToHash } from '../lib/portableLink.ts';
+import { exportQuoteToPdf } from '../lib/pdfExport.ts';
 
 interface ShareQuoteModalProps {
   quote: Quote;
@@ -38,18 +44,46 @@ export const ShareQuoteModal: React.FC<ShareQuoteModalProps> = ({
   const [showHtmlCodeModal, setShowHtmlCodeModal] = useState(false);
   const [showEmailOptions, setShowEmailOptions] = useState(false);
   const [showEmailPreview, setShowEmailPreview] = useState(true);
+  const [linkMode, setLinkMode] = useState<'PORTABLE' | 'STANDARD'>('PORTABLE');
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const previewCardRef = useRef<HTMLDivElement>(null);
-  const publicUrl = `${window.location.origin}/view/${quote.public_token}`;
+
+  // Linkuri: portabil (cu date incluse în hash pentru deschidere 100% garantată pe orice telefon) vs standard
+  const portableHash = `#d=${encodeQuoteToHash(quote)}`;
+  const portableUrl = `${window.location.origin}/view/${quote.public_token}${portableHash}`;
+  const standardUrl = `${window.location.origin}/view/${quote.public_token}`;
+  const publicUrl = linkMode === 'PORTABLE' ? portableUrl : standardUrl;
 
   const emailSubject = `Ofertă Comercială ${quote.numar_oferta} - ${quote.titlu}`;
   const messageText = generatePlainTextEmail(quote, publicUrl);
   const htmlEmailContent = generateHtmlEmail(quote, publicUrl);
   const orgName = quote.organization?.nume || 'Compania noastră';
 
+  const handleDownloadPdf = async () => {
+    setIsGeneratingPdf(true);
+    try {
+      const res = await exportQuoteToPdf(quote);
+      if (res.success && res.fileName) {
+        onToast?.(`Documentul PDF (${res.fileName}) a fost descărcat cu succes!`);
+      } else {
+        onToast?.(res.error || 'Nu s-a putut descărca PDF-ul.');
+      }
+    } catch (err) {
+      console.error(err);
+      onToast?.('A apărut o problemă la descărcarea PDF-ului.');
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
   const handleCopy = () => {
     navigator.clipboard.writeText(publicUrl);
     setCopied(true);
-    onToast?.('Linkul public a fost copiat în clipboard!');
+    onToast?.(
+      linkMode === 'PORTABLE'
+        ? 'Linkul portabil cu date integrate a fost copiat! Funcționează garantat pe orice telefon.'
+        : 'Linkul public a fost copiat în clipboard!'
+    );
     setTimeout(() => setCopied(false), 2500);
   };
 
@@ -213,20 +247,51 @@ export const ShareQuoteModal: React.FC<ShareQuoteModalProps> = ({
 
         {/* Corp Modal */}
         <div className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
-          {/* Notă explicativă */}
-          <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl flex items-start gap-3">
-            <ShieldCheck className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-            <div className="text-xs text-blue-950 leading-relaxed">
-              <span className="font-bold block text-blue-900 mb-0.5">Link Public Securizat &amp; Semnare Digitală pe Loc</span>
-              Clientul final accesează oferta direct din telefon sau computer, fără cont sau parolă. Poate analiza articolele, bifa opționalele și semna digital.
+          {/* Notă critică pentru telefoane și WhatsApp */}
+          <div className="p-3.5 bg-amber-50/90 border border-amber-200 rounded-xl flex items-start gap-3">
+            <Smartphone className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-amber-950 leading-relaxed">
+              <span className="font-bold block text-amber-900 mb-0.5">
+                Pentru trimitere pe WhatsApp sau Email către telefonul clientului:
+              </span>
+              Folosiți <strong>Link-ul Autonom Portabil</strong> (datele ofertei sunt incluse securizat în link) sau descărcați <strong>PDF-ul ofertei</strong>. Astfel, oferta se deschide garantat pe orice smartphone fără a depinde de cookie-uri de test sau de baza de date a computerului.
             </div>
           </div>
 
-          {/* Câmp Link cu buton de Copiere & Deschidere */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-              Linkul unic al ofertei pentru client
-            </label>
+          {/* Selector Tip Link */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Format Link Ofertă:
+              </label>
+              <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setLinkMode('PORTABLE')}
+                  className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    linkMode === 'PORTABLE'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  <span>Portabil (WhatsApp/Tel)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLinkMode('STANDARD')}
+                  className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    linkMode === 'STANDARD'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>Standard Scurt</span>
+                </button>
+              </div>
+            </div>
+
             <div className="flex items-center gap-2">
               <input
                 type="text"
@@ -239,7 +304,7 @@ export const ShareQuoteModal: React.FC<ShareQuoteModalProps> = ({
                 type="button"
                 onClick={handleCopy}
                 className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shrink-0 shadow-sm transition-all cursor-pointer"
-                title="Copiază linkul direct"
+                title="Copiază linkul selectat"
               >
                 {copied ? (
                   <>
@@ -254,6 +319,46 @@ export const ShareQuoteModal: React.FC<ShareQuoteModalProps> = ({
                 )}
               </button>
             </div>
+            <p className="text-[11px] text-slate-500">
+              {linkMode === 'PORTABLE'
+                ? '✓ Recomandat pentru WhatsApp & Mail: conține produsele și valorile criptate în link, funcționând oriunde.'
+                : 'URL simplu: necesită sincronizare prealabilă pe server.'}
+            </p>
+          </div>
+
+          {/* Acțiuni Rapide (WhatsApp, Email, Descarcă PDF) */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+            <button
+              type="button"
+              onClick={handleWhatsApp}
+              className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span>Trimite pe WhatsApp</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleEmailDefault}
+              className="py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
+            >
+              <Mail className="w-4 h-4" />
+              <span>Trimite pe Email</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              disabled={isGeneratingPdf}
+              className="py-2.5 px-3 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+            >
+              {isGeneratingPdf ? (
+                <Loader2 className="w-4 h-4 animate-spin text-slate-300" />
+              ) : (
+                <Download className="w-4 h-4 text-slate-300" />
+              )}
+              <span>Descarcă PDF Ofertă</span>
+            </button>
           </div>
 
           {/* Previzualizare Conținut Email Modern */}

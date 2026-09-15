@@ -21,6 +21,7 @@ import { Quote, QuoteStatus, SubscriptionPlan, DashboardTheme } from '../types.t
 import { formatCurrency, formatDate } from '../lib/calculations.ts';
 import { ShareQuoteModal } from './ShareQuoteModal.tsx';
 import { getThemeClasses } from '../lib/themes.ts';
+import { encodeQuoteToHash } from '../lib/portableLink.ts';
 
 interface QuotesListProps {
   quotes: Quote[];
@@ -73,14 +74,17 @@ export const QuotesList: React.FC<QuotesListProps> = ({
   const conversionRate = quotes.length > 0 ? Math.round((acceptedQuotes.length / quotes.length) * 100) : 0;
 
   const handleCopyLink = (token: string, quoteId: string) => {
-    const url = `${window.location.origin}/view/${token}`;
+    const targetQuote = quotes.find((q) => q.id === quoteId || q.public_token === token);
+    const portableHash = targetQuote ? `#d=${encodeQuoteToHash(targetQuote)}` : '';
+    const url = `${window.location.origin}/view/${token}${portableHash}`;
     navigator.clipboard.writeText(url);
     setCopiedId(quoteId);
     setTimeout(() => setCopiedId(null), 2500);
   };
 
   const handleSendEmail = (quote: Quote) => {
-    const publicUrl = `${window.location.origin}/view/${quote.public_token}`;
+    const portableHash = `#d=${encodeQuoteToHash(quote)}`;
+    const publicUrl = `${window.location.origin}/view/${quote.public_token}${portableHash}`;
     const subject = encodeURIComponent(`Ofertă Comercială ${quote.numar_oferta} - ${quote.titlu}`);
     const body = encodeURIComponent(
       `Bună ziua,\n\nVă transmitem oferta comercială ${quote.numar_oferta} în valoare de ${formatCurrency(quote.valoare_totala, quote.moneda)}.\n\nPuteți vizualiza detaliile complete, selecta opționalele și semna digital direct aici:\n${publicUrl}\n\nCu stimă,\n${quote.organization?.nume || 'Echipa noastră'}`
