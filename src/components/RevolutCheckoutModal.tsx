@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Check,
@@ -13,6 +13,8 @@ import {
   Clock,
   Sparkles,
   ArrowUpRight,
+  Settings2,
+  Link2,
 } from 'lucide-react';
 import { Organization, SubscriptionPlan, ProformaInvoice } from '../types.ts';
 import {
@@ -62,6 +64,15 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
   const [telefon, setTelefon] = useState('');
   const [adresa, setAdresa] = useState(organization?.adresa || '');
 
+  // Configurări link-uri Revolut (persistate local)
+  const [starterLink, setStarterLink] = useState(() => {
+    return localStorage.getItem('offerflow_revolut_link_starter') || '';
+  });
+  const [clasicLink, setClasicLink] = useState(() => {
+    return localStorage.getItem('offerflow_revolut_link_clasic') || '';
+  });
+  const [showConfigLink, setShowConfigLink] = useState(false);
+
   // Stare procesare & comandă Revolut
   const [isProcessing, setIsProcessing] = useState(false);
   const [checkoutUrl, setCheckoutUrl] = useState<string>('');
@@ -74,6 +85,12 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
     setAmount(plan === 'CLASIC' ? 100 : 45);
   };
 
+  const handleSaveCustomLinks = () => {
+    if (starterLink.trim()) localStorage.setItem('offerflow_revolut_link_starter', starterLink.trim());
+    if (clasicLink.trim()) localStorage.setItem('offerflow_revolut_link_clasic', clasicLink.trim());
+    setShowConfigLink(false);
+  };
+
   /**
    * PASUL 1 -> PASUL 2: Inițiere comandă Revolut & Deschidere Garantată a Paginii Oficiale de Plată
    */
@@ -84,7 +101,7 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
       return;
     }
 
-    // Deschidem tab-ul sincron pentru a evita blocarea de către browser popup-blockers
+    // Deschidem tab-ul sincron pentru a preveni blocarea popup-urilor pe iOS/Android/Chrome
     let paymentWindow: Window | null = null;
     try {
       paymentWindow = window.open('', '_blank');
@@ -120,7 +137,8 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
     setIsProcessing(true);
 
     try {
-      let activeUrl = `https://revolut.me/catalinsandu07?amount=${amount}&currency=RON`;
+      const savedLink = selectedPlan === 'CLASIC' ? clasicLink : starterLink;
+      let activeUrl = savedLink || '';
       let activeId = `rev_ord_${Date.now()}`;
 
       try {
@@ -134,6 +152,8 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
             customAmount: amount,
             organizationId: organization?.id,
             returnUrl: window.location.href,
+            customPaymentLinkStarter: starterLink || undefined,
+            customPaymentLinkClasic: clasicLink || undefined,
           }),
         });
 
@@ -146,6 +166,16 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
         console.warn('Fallback Revolut URL:', err);
       }
 
+      // Dacă nu există URL returnat de API și nici link configurat, cerem configurarea linkului
+      if (!activeUrl) {
+        if (paymentWindow && !paymentWindow.closed) {
+          paymentWindow.close();
+        }
+        setShowConfigLink(true);
+        setIsProcessing(false);
+        return;
+      }
+
       setCheckoutUrl(activeUrl);
       setOrderId(activeId);
 
@@ -153,7 +183,6 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
       if (paymentWindow && !paymentWindow.closed) {
         paymentWindow.location.href = activeUrl;
       } else {
-        // Fallback dacă popup-ul a fost complet refuzat
         window.open(activeUrl, '_blank', 'noopener,noreferrer');
       }
 
@@ -161,10 +190,7 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
       setStep('AWAITING_PAYMENT');
     } catch (err) {
       console.error('Eroare inițiere plată:', err);
-      if (paymentWindow && !paymentWindow.closed) {
-        paymentWindow.location.href = `https://revolut.me/catalinsandu07?amount=${amount}&currency=RON`;
-      }
-      setStep('AWAITING_PAYMENT');
+      setShowConfigLink(true);
     } finally {
       setIsProcessing(false);
     }
@@ -238,14 +264,80 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                   Date Facturare &amp; Plată Revolut
                 </h3>
               </div>
-              <button
-                type="button"
-                onClick={onClose}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowConfigLink(!showConfigLink)}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                  title="Configurare Link Revolut"
+                >
+                  <Settings2 className="w-5 h-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
+
+            {/* Configurare opțională directă a Link-ului Revolut Business */}
+            {showConfigLink && (
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 text-xs animate-in fade-in duration-150">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                    <Link2 className="w-4 h-4 text-blue-600" />
+                    <span>Link-uri Oficiale Revolut Business / Payment Links</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowConfigLink(false)}
+                    className="text-slate-400 hover:text-slate-600 font-bold"
+                  >
+                    Închide
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Lipește link-ul generat din contul tău <strong>Revolut Business → Merchant → Payment Links</strong> (sau Revtag-ul tău) pentru plata exactă de 45 și 100 RON:
+                </p>
+
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                      Link Revolut Plan Starter (45 RON):
+                    </label>
+                    <input
+                      type="url"
+                      value={starterLink}
+                      onChange={(e) => setStarterLink(e.target.value)}
+                      placeholder="ex: https://checkout.revolut.com/pay/... sau link Revolut Me"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                      Link Revolut Plan Clasic (100 RON):
+                    </label>
+                    <input
+                      type="url"
+                      value={clasicLink}
+                      onChange={(e) => setClasicLink(e.target.value)}
+                      placeholder="ex: https://checkout.revolut.com/pay/... sau link Revolut Me"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSaveCustomLinks}
+                    className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors cursor-pointer text-xs shadow-xs"
+                  >
+                    Salvează Link-urile de Plată
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Selector Pachete Oficiale OfferFlow: 45 lei Starter | 100 lei Clasic */}
             <div>
@@ -414,7 +506,7 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
               <div className="text-[11px] text-slate-500 bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-start gap-2">
                 <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                 <span>
-                  Plata se efectuează direct către <strong>{OPERATOR_PROVIDER_INFO.nume}</strong> pe pagina oficială Revolut Checkout (Revolut Pay, Apple Pay, Google Pay, Card).
+                  Plata se efectuează securizat către <strong>{OPERATOR_PROVIDER_INFO.nume}</strong> pe pagina oficială Revolut Checkout. Factura fiscală se emite automat după plată.
                 </span>
               </div>
 
