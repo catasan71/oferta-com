@@ -1,0 +1,228 @@
+// ==============================================================================
+// OfferFlow - Prisma Schema (PostgreSQL)
+// Arhitectură completă pentru platforma SaaS B2B de Ofertare & Semnare Digitală
+// ==============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------------------------
+// ENUMERATIONS
+// ------------------------------------------------------------------------------
+
+enum UserRole {
+  ADMIN
+  MEMBER
+}
+
+enum SubscriptionPlan {
+  FREE
+  STARTER
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  VIEWED
+  NEGOTIATION
+  ACCEPTED
+  REJECTED
+}
+
+enum FeedbackAuthor {
+  CLIENT
+  ORGANIZATION
+}
+
+enum FeedbackStatus {
+  OPEN
+  RESOLVED
+}
+
+// ------------------------------------------------------------------------------
+// MODELS
+// ------------------------------------------------------------------------------
+
+model Organization {
+  id                            String          @id @default(uuid())
+  nume                          String
+  cui                           String          @unique
+  reg_com                       String?
+  adresa                        String?
+  iban                          String?
+  moneda_implicita              String          @default("RON") // RON, EUR, USD
+  logo_url                      String?
+  brand_color                   String          @default("#2563eb") // Hex color accent pentru White-Label
+  created_at                    DateTime        @default(now())
+  updated_at                    DateTime        @updatedAt
+
+  // Relații
+  users                         User[]
+  subscription                  Subscription?
+  products_services             ProductService[]
+  quotes                        Quote[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String       @id @default(uuid())
+  organizationId String
+  email          String       @unique
+  nume           String
+  rol            UserRole     @default(MEMBER)
+  created_at     DateTime     @default(now())
+  updated_at     DateTime     @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+model Subscription {
+  id                  String             @id @default(uuid())
+  organizationId      String             @unique
+  plan                SubscriptionPlan   @default(FREE)
+  revolut_customer_id String?
+  revolut_order_id    String?
+  status              SubscriptionStatus @default(ACTIVE)
+  valid_until         DateTime?          // Data expirării perioadei curente plătite
+  created_at          DateTime           @default(now())
+  updated_at          DateTime           @updatedAt
+
+  organization        Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("subscriptions")
+}
+
+model ProductService {
+  id             String       @id @default(uuid())
+  organizationId String
+  tip_articol    String       @default("produs") // produs, serviciu, pachet, abonament
+  cod_articol    String?      // SKU sau Cod intern (ex: GROHE-232, CLD-02)
+  producator     String?      // Brand / Producător (ex: Grohe, Bosch, Viega)
+  categorie      String?      // ex: Instalații Sanitare, Termice, Climatizare, IT
+  denumire       String
+  descriere      String?      @db.Text
+  pret_unitar    Decimal      @db.Decimal(12, 2)
+  pret_cost      Decimal?     @db.Decimal(12, 2) // Preț cost intern pentru calcul marjă profit
+  um             String       @default("buc") // buc, ml, mp, mc, kg, kit, ore, luni, etc.
+  cota_tva       Int          @default(19) // 19, 9, 5, 0 (%)
+  moneda         String       @default("RON")
+  este_activ     Boolean      @default(true)
+  termen_livrare String?
+  created_at     DateTime     @default(now())
+  updated_at     DateTime     @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([tip_articol])
+  @@index([categorie])
+  @@index([cod_articol])
+  @@map("products_services")
+}
+
+model Quote {
+  id              String         @id @default(uuid())
+  organizationId  String
+  titlu           String
+  numar_oferta    String         // ex: OF-2026-0042
+  client_name     String
+  client_email    String?
+  client_phone    String?        // Telefon contact client
+  client_cui      String?
+  valoare_totala  Decimal        @db.Decimal(12, 2)
+  valoare_tva     Decimal        @db.Decimal(12, 2)
+  moneda          String         @default("RON")
+  status          QuoteStatus    @default(DRAFT)
+  public_token    String         @unique @default(uuid()) // Token securizat pentru /view/[token]
+  view_count      Int            @default(0)
+  expires_at      DateTime?
+  termeni_plata   String?        @db.Text
+  note_interne    String?        @db.Text
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
+
+  // Relații
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  items           QuoteItem[]
+  feedbacks       QuoteFeedback[]
+  signature       QuoteSignature?
+
+  @@index([organizationId])
+  @@index([public_token])
+  @@index([status])
+  @@map("quotes")
+}
+
+model QuoteItem {
+  id               String          @id @default(uuid())
+  quoteId          String
+  tip_articol      String?         // produs, serviciu, pachet, abonament
+  cod_articol      String?
+  producator       String?         // Grohe, Bosch, etc.
+  titlu            String
+  descriere        String?         @db.Text
+  cantitate        Decimal         @db.Decimal(10, 2) @default(1.00)
+  pret_unitar      Decimal         @db.Decimal(12, 2)
+  discount_procent Decimal         @db.Decimal(5, 2) @default(0.00)
+  total            Decimal         @db.Decimal(12, 2)
+  um               String          @default("buc")
+  cota_tva         Int             @default(19)
+  este_optional    Boolean         @default(false)
+  este_selectat    Boolean         @default(true) // Dacă este opțional și clientul l-a bifat
+
+  quote            Quote           @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  feedbacks        QuoteFeedback[]
+
+  @@index([quoteId])
+  @@map("quote_items")
+}
+
+model QuoteFeedback {
+  id          String         @id @default(uuid())
+  quoteId     String
+  quoteItemId String?        // Nullable: feedback legat de un item anume sau de întreaga ofertă
+  autor       FeedbackAuthor @default(CLIENT)
+  mesaj       String         @db.Text
+  status      FeedbackStatus @default(OPEN)
+  created_at  DateTime       @default(now())
+  updated_at  DateTime       @updatedAt
+
+  quote       Quote          @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quoteItem   QuoteItem?     @relation(fields: [quoteItemId], references: [id], onDelete: SetNull)
+
+  @@index([quoteId])
+  @@index([quoteItemId])
+  @@map("quote_feedbacks")
+}
+
+model QuoteSignature {
+  id                  String   @id @default(uuid())
+  quoteId             String   @unique
+  semnatar_nume       String
+  semnatar_functie    String?  // ex: Administrator, Director Comercial
+  ip_address          String
+  user_agent          String
+  semnat_la           DateTime @default(now())
+  semnatura_data_url  String   @db.Text // Base64 Canvas Drawing (Data URL)
+
+  quote               Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@map("quote_signatures")
+}
