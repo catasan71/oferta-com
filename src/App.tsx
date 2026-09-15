@@ -357,7 +357,24 @@ export function App() {
       status: 'ACTIVE',
       valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     });
-    setIsRevolutCheckoutOpen(false);
+
+    // Dacă utilizatorul a făcut upgrade din Landing Page, îl autentificăm și îl trecem în Dashboard
+    if (!currentUser) {
+      const newUser: User = {
+        id: `usr_${Date.now()}`,
+        organizationId: organization.id || 'org_1',
+        nume: organization.nume || 'Administrator',
+        email: organization.email || 'client@exemplu.ro',
+        rol: 'ADMIN',
+        created_at: new Date().toISOString(),
+      };
+      setCurrentUser(newUser);
+      try {
+        localStorage.setItem('offerflow_current_user', JSON.stringify(newUser));
+      } catch (e) {}
+    }
+    setCurrentView('DASHBOARD');
+    // Modalul rămâne deschis la pasul SUCCESS pentru ca utilizatorul să vadă confirmarea și să descarce factura proformă!
   };
 
   // Management Catalog Articole

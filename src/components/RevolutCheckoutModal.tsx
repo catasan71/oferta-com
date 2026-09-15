@@ -18,6 +18,8 @@ import {
   MapPin,
   FileText,
   X,
+  AlertCircle,
+  ExternalLink,
 } from 'lucide-react';
 import { Organization, SubscriptionPlan, ProformaInvoice } from '../types.ts';
 import {
@@ -82,13 +84,16 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
   };
 
   // Pasul 2: Autorizare plată pe cardul clientului via Revolut Pay / Apple Pay / Google Pay / Card
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   const handleExecutePayment = async (method: 'CARD' | 'REVOLUT_PAY' | 'APPLE_PAY' | 'GOOGLE_PAY') => {
     setIsProcessing(true);
     setProcessingMethod(method);
+    setErrorMessage(null);
 
     try {
       // Simulare comunicare securizată cu gateway-ul Revolut Merchant & autorizare tokenizată
-      await new Promise((resolve) => setTimeout(resolve, 1300));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       const revolutOrderId = `rev_ord_${Date.now()}`;
       const revolutTxId = `TXN_${method}_${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
@@ -100,12 +105,12 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
 
       // 1. Emitem factura proformă cu datele fiscale și înregistrăm transmiterea
       const proforma = createAndRecordProforma({
-        clientName: billingName,
-        clientCui: billingCui,
-        clientRegCom: billingRegCom,
-        clientAddress: billingAddress,
-        clientEmail: billingEmail,
-        clientPhone: billingPhone,
+        clientName: billingName || organization.nume || 'Client B2B',
+        clientCui: billingCui || organization.cui || undefined,
+        clientRegCom: billingRegCom || organization.reg_com || undefined,
+        clientAddress: billingAddress || organization.adresa || 'România',
+        clientEmail: billingEmail || organization.email || 'office@developly.pro',
+        clientPhone: billingPhone || '0765263860',
         plan: selectedPlan,
         metodaPlata: metodaPlataText,
         revolutOrderId,
@@ -114,13 +119,14 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
 
       setGeneratedProforma(proforma);
 
-      // 2. ACTIVARE IMEDIATĂ a abonamentului conform instrucțiunii utilizatorului
+      // 2. ACTIVARE a abonamentului
       onSuccessUpgrade(selectedPlan);
 
       // 3. Trecem la pasul de confirmare și afișare proformă
       setStep('SUCCESS');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Eroare procesare plată Revolut:', error);
+      setErrorMessage(error?.message || 'A apărut o eroare la procesarea plății.');
     } finally {
       setIsProcessing(false);
       setProcessingMethod(null);
@@ -418,6 +424,60 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
               </div>
             </div>
 
+            {/* Banner Mod Testare / Preview */}
+            <div className="p-2.5 bg-amber-50 dark:bg-amber-950/40 rounded-xl border border-amber-300 dark:border-amber-800 text-[11px] text-amber-900 dark:text-amber-200 flex items-center justify-between">
+              <span className="font-semibold flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                Mod Testare & Validare Activ
+              </span>
+              <span className="text-[10px] opacity-80">Zero taxe pe card • Activare imediată la click</span>
+            </div>
+
+            {/* Mesaj de eroare dacă există */}
+            {errorMessage && (
+              <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 rounded-xl text-xs text-rose-800 dark:text-rose-200 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            {/* Indicator de procesare activ */}
+            {isProcessing && (
+              <div className="p-4 bg-blue-50 dark:bg-blue-950/50 rounded-2xl border border-blue-300 dark:border-blue-700 flex items-center gap-3.5 shadow-sm">
+                <div className="w-6 h-6 border-3 border-blue-600 border-t-transparent rounded-full animate-spin shrink-0" />
+                <div className="text-xs">
+                  <div className="font-bold text-blue-900 dark:text-blue-100">
+                    Se procesează plata prin {processingMethod === 'REVOLUT_PAY' ? 'Revolut Pay' : processingMethod === 'APPLE_PAY' ? 'Apple Pay' : processingMethod === 'GOOGLE_PAY' ? 'Google Pay' : 'Card Bancar'}...
+                  </div>
+                  <div className="text-[11px] text-blue-700 dark:text-blue-300">
+                    Se validează 3D-Secure și se generează Factura Proformă oficială.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Opțiune transfer direct cu bani reali prin Revolut */}
+            <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-800/80 rounded-2xl border border-blue-200 dark:border-slate-700 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+              <div>
+                <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
+                  Doriți plată cu bani reali direct în contul Revolut?
+                </div>
+                <div className="text-[11px] text-slate-600 dark:text-slate-400">
+                  Puteți trimite {price} RON direct pe link-ul Revolut al Catalin Sandu PFA:
+                </div>
+              </div>
+              <a
+                href="https://revolut.me/catalinsandu07"
+                target="_blank"
+                rel="noreferrer"
+                className="px-3.5 py-1.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl flex items-center gap-1 shrink-0 shadow-sm"
+              >
+                <span>Deschide Revolut.me</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+
             {/* SECTIUNE: Express Checkout (Revolut Pay, Apple Pay, Google Pay) */}
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
@@ -435,16 +495,25 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                   type="button"
                   onClick={() => handleExecutePayment('REVOLUT_PAY')}
                   disabled={isProcessing}
-                  className="p-3 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 hover:from-black hover:to-blue-900 text-white rounded-2xl border border-slate-700 shadow-md flex flex-col items-center justify-center gap-1 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                  className="p-3 bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 hover:from-black hover:to-blue-900 text-white rounded-2xl border border-slate-700 shadow-md flex flex-col items-center justify-center gap-1 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-75 relative overflow-hidden"
                   title="Plătește direct din aplicația Revolut (1-Click)"
                 >
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-5 h-5 rounded-full bg-white text-slate-950 font-black flex items-center justify-center text-[11px]">
-                      R
-                    </span>
-                    <span className="font-extrabold text-sm tracking-tight">Revolut Pay</span>
-                  </div>
-                  <span className="text-[10px] text-blue-300 font-medium">1-Click în Aplicație</span>
+                  {isProcessing && processingMethod === 'REVOLUT_PAY' ? (
+                    <div className="flex flex-col items-center justify-center py-1">
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mb-1" />
+                      <span className="text-[10px] text-blue-200 font-bold animate-pulse">Se autorizează...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-white text-slate-950 font-black flex items-center justify-center text-[11px]">
+                          R
+                        </span>
+                        <span className="font-extrabold text-sm tracking-tight">Revolut Pay</span>
+                      </div>
+                      <span className="text-[10px] text-blue-300 font-medium">1-Click în Aplicație</span>
+                    </>
+                  )}
                 </button>
 
                 {/* 2. APPLE PAY BUTTON */}
@@ -452,16 +521,25 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                   type="button"
                   onClick={() => handleExecutePayment('APPLE_PAY')}
                   disabled={isProcessing}
-                  className="p-3 bg-black hover:bg-zinc-900 text-white rounded-2xl border border-zinc-800 shadow-md flex flex-col items-center justify-center gap-1 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                  className="p-3 bg-black hover:bg-zinc-900 text-white rounded-2xl border border-zinc-800 shadow-md flex flex-col items-center justify-center gap-1 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-75 relative overflow-hidden"
                   title="Plătește cu Apple Pay (Face ID / Touch ID)"
                 >
-                  <div className="flex items-center gap-1.5">
-                    <svg className="w-4 h-4 fill-current" viewBox="0 0 170 170">
-                      <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.69-3.04-7.5-7.7-11.44-13.98-5.43-8.68-9.77-18.49-13.01-29.43-3.24-10.94-4.86-21.6-4.86-31.98 0-15.02 3.8-27.53 11.41-37.53 7.61-10 17.29-15.11 29.04-15.33 4.58 0 9.61 1.25 15.11 3.75 5.5 2.5 9.07 3.8 10.72 3.91 1.74-.11 5.37-1.41 10.9-3.91 5.53-2.5 10.22-3.75 14.07-3.75 10.43.33 19.34 4.35 26.73 12.06-9.57 5.86-14.24 13.91-14.02 24.13.22 8.04 3.37 14.78 9.45 20.22 6.08 5.43 13.26 8.58 21.52 9.45-2.07 6.41-4.7 13.04-7.91 19.89zm-29.35-121.2c0 6.08-2.28 11.95-6.84 17.61-5.54 6.74-12.28 10.87-20.22 12.39-.33-1.63-.5-3.15-.5-4.57 0-6.19 2.45-12.39 7.35-18.58 2.45-3.04 5.54-5.65 9.28-7.82 3.74-2.18 7.33-3.43 10.78-3.75.11 1.63.15 3.2.15 4.72z" />
-                    </svg>
-                    <span className="font-extrabold text-sm tracking-tight">Pay</span>
-                  </div>
-                  <span className="text-[10px] text-zinc-400 font-medium">Touch / Face ID</span>
+                  {isProcessing && processingMethod === 'APPLE_PAY' ? (
+                    <div className="flex flex-col items-center justify-center py-1">
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mb-1" />
+                      <span className="text-[10px] text-zinc-300 font-bold animate-pulse">Biometric FaceID...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-1.5">
+                        <svg className="w-4 h-4 fill-current" viewBox="0 0 170 170">
+                          <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.69-3.04-7.5-7.7-11.44-13.98-5.43-8.68-9.77-18.49-13.01-29.43-3.24-10.94-4.86-21.6-4.86-31.98 0-15.02 3.8-27.53 11.41-37.53 7.61-10 17.29-15.11 29.04-15.33 4.58 0 9.61 1.25 15.11 3.75 5.5 2.5 9.07 3.8 10.72 3.91 1.74-.11 5.37-1.41 10.9-3.91 5.53-2.5 10.22-3.75 14.07-3.75 10.43.33 19.34 4.35 26.73 12.06-9.57 5.86-14.24 13.91-14.02 24.13.22 8.04 3.37 14.78 9.45 20.22 6.08 5.43 13.26 8.58 21.52 9.45-2.07 6.41-4.7 13.04-7.91 19.89zm-29.35-121.2c0 6.08-2.28 11.95-6.84 17.61-5.54 6.74-12.28 10.87-20.22 12.39-.33-1.63-.5-3.15-.5-4.57 0-6.19 2.45-12.39 7.35-18.58 2.45-3.04 5.54-5.65 9.28-7.82 3.74-2.18 7.33-3.43 10.78-3.75.11 1.63.15 3.2.15 4.72z" />
+                        </svg>
+                        <span className="font-extrabold text-sm tracking-tight">Pay</span>
+                      </div>
+                      <span className="text-[10px] text-zinc-400 font-medium">Touch / Face ID</span>
+                    </>
+                  )}
                 </button>
 
                 {/* 3. GOOGLE PAY BUTTON */}
@@ -469,19 +547,28 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                   type="button"
                   onClick={() => handleExecutePayment('GOOGLE_PAY')}
                   disabled={isProcessing}
-                  className="p-3 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-900 dark:text-white rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md flex flex-col items-center justify-center gap-1 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                  className="p-3 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-900 dark:text-white rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md flex flex-col items-center justify-center gap-1 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-75 relative overflow-hidden"
                   title="Plătește cu Google Pay"
                 >
-                  <div className="flex items-center gap-1 font-extrabold text-sm">
-                    <span className="text-[#4285F4]">G</span>
-                    <span className="text-[#EA4335]">o</span>
-                    <span className="text-[#FBBC05]">o</span>
-                    <span className="text-[#4285F4]">g</span>
-                    <span className="text-[#34A853]">l</span>
-                    <span className="text-[#EA4335]">e</span>
-                    <span className="ml-1 font-bold text-slate-800 dark:text-white">Pay</span>
-                  </div>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Securizat GPay</span>
+                  {isProcessing && processingMethod === 'GOOGLE_PAY' ? (
+                    <div className="flex flex-col items-center justify-center py-1">
+                      <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-1" />
+                      <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold animate-pulse">Se autorizează...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-1 font-extrabold text-sm">
+                        <span className="text-[#4285F4]">G</span>
+                        <span className="text-[#EA4335]">o</span>
+                        <span className="text-[#FBBC05]">o</span>
+                        <span className="text-[#4285F4]">g</span>
+                        <span className="text-[#34A853]">l</span>
+                        <span className="text-[#EA4335]">e</span>
+                        <span className="ml-1 font-bold text-slate-800 dark:text-white">Pay</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Securizat GPay</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

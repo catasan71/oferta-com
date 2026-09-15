@@ -74,11 +74,11 @@ export function createAndRecordProforma({
   revolutOrderId,
   revolutTxId,
 }: {
-  clientName: string;
+  clientName?: string;
   clientCui?: string;
   clientRegCom?: string;
-  clientAddress: string;
-  clientEmail: string;
+  clientAddress?: string;
+  clientEmail?: string;
   clientPhone?: string;
   plan: SubscriptionPlan;
   metodaPlata?: string;
@@ -89,6 +89,10 @@ export function createAndRecordProforma({
   const valoare = plan === 'STARTER' ? 45 : plan === 'CLASIC' ? 100 : 0;
   const serieNumar = generateProformaNumber();
 
+  const safeName = (clientName || 'Client B2B').toString().trim() || 'Client B2B';
+  const safeAddress = (clientAddress || 'Craiova, România').toString().trim() || 'România';
+  const safeEmail = (clientEmail || 'office@developly.pro').toString().trim() || 'office@developly.pro';
+
   const proforma: ProformaInvoice = {
     id: `inv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     serie_numar: serieNumar,
@@ -96,12 +100,12 @@ export function createAndRecordProforma({
     data_scadenta: now.toISOString(),
     furnizor: { ...OPERATOR_PROVIDER_INFO },
     client: {
-      nume: clientName.trim() || 'Client B2B',
-      cui: clientCui?.trim() || undefined,
-      reg_com: clientRegCom?.trim() || undefined,
-      adresa: clientAddress.trim() || 'România',
-      email: clientEmail.trim(),
-      telefon: clientPhone?.trim() || undefined,
+      nume: safeName,
+      cui: clientCui ? String(clientCui).trim() : undefined,
+      reg_com: clientRegCom ? String(clientRegCom).trim() : undefined,
+      adresa: safeAddress,
+      email: safeEmail,
+      telefon: clientPhone ? String(clientPhone).trim() : undefined,
     },
     plan,
     descriere_serviciu: `Abonament Platformă OfferFlow B2B • Planul ${plan} (Acces complet 30 de zile)`,
@@ -112,7 +116,7 @@ export function createAndRecordProforma({
     revolut_order_id: revolutOrderId || `rev_ord_${Date.now()}`,
     revolut_transaction_id: revolutTxId || `txn_rev_${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
     data_platii: now.toISOString(),
-    transmis_client_email: clientEmail.trim(),
+    transmis_client_email: safeEmail,
     transmis_admin_email: `${ADMIN_NOTIFICATION_EMAIL}, ${ADMIN_SECONDARY_EMAIL}`,
     data_transmiterii: now.toISOString(),
   };
