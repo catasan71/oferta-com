@@ -318,6 +318,12 @@ export function App() {
     if (exists) {
       setQuotes(quotes.map((q) => (q.id === savedQuote.id ? savedQuote : q)));
     } else {
+      const maxQuotes = subscription.plan === 'FREE' ? 2 : subscription.plan === 'STARTER' ? 5 : 30;
+      if (quotes.length >= maxQuotes) {
+        setSelectedPlanForUpgrade(subscription.plan === 'FREE' ? 'STARTER' : 'CLASIC');
+        setIsRevolutCheckoutOpen(true);
+        return;
+      }
       setQuotes([savedQuote, ...quotes]);
     }
     setCurrentView('DASHBOARD');

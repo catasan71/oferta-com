@@ -15,6 +15,7 @@ import {
   FileText,
   Share2,
   MessageCircle,
+  Sparkles,
 } from 'lucide-react';
 import { Quote, QuoteStatus, SubscriptionPlan, DashboardTheme } from '../types.ts';
 import { formatCurrency, formatDate } from '../lib/calculations.ts';
@@ -204,16 +205,29 @@ export const QuotesList: React.FC<QuotesListProps> = ({
 
         <button
           type="button"
-          onClick={onCreateNewQuote}
-          disabled={isLimitReached}
+          onClick={isLimitReached ? onUpgradeToStarter : onCreateNewQuote}
           className={`px-4 py-2 text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer ${
             isLimitReached
-              ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
+              ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-500/20 active:scale-[0.98]'
               : 'bg-blue-600 hover:bg-blue-700 text-white active:scale-[0.98]'
           }`}
+          title={
+            isLimitReached
+              ? `Limita de ${maxQuotesForPlan} oferte pentru planul ${subscriptionPlan} a fost atinsă. Click pentru Upgrade Revolut!`
+              : 'Creează o ofertă comercială nouă'
+          }
         >
-          <Plus className="w-4 h-4" />
-          Ofertă Nouă
+          {isLimitReached ? (
+            <>
+              <Sparkles className="w-4 h-4" />
+              Upgrade Plan ({quotesCount}/{maxQuotesForPlan} oferte)
+            </>
+          ) : (
+            <>
+              <Plus className="w-4 h-4" />
+              Ofertă Nouă
+            </>
+          )}
         </button>
       </div>
 
