@@ -163,6 +163,15 @@ app.post('/api/create-revolut-order', async (req, res) => {
       });
     }
 
+    const payload: Record<string, any> = {
+      amount: amountInBani,
+      currency: 'RON',
+      customer_email: email || 'catalinsandu@protonmail.com',
+      description: `OfferFlow - Abonament Plan ${planName}`,
+      merchant_order_ext_ref: `ord_${Date.now()}_${plan}`,
+      capture_mode: 'automatic',
+    };
+
     let response = await fetch(`${baseUrl}/orders`, {
       method: 'POST',
       headers: {
@@ -170,14 +179,7 @@ app.post('/api/create-revolut-order', async (req, res) => {
         'Content-Type': 'application/json',
         'Revolut-Api-Version': '2023-09-01',
       },
-      body: JSON.stringify({
-        amount: amountInBani,
-        currency: 'RON',
-        customer_email: email || 'catalinsandu@protonmail.com',
-        description: `OfferFlow - Abonament Plan ${planName}`,
-        merchant_order_ext_ref: `ord_${Date.now()}_${plan}`,
-        capture_mode: 'AUTOMATIC',
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok && response.status === 404) {
@@ -188,14 +190,7 @@ app.post('/api/create-revolut-order', async (req, res) => {
           'Content-Type': 'application/json',
           'Revolut-Api-Version': '2023-09-01',
         },
-        body: JSON.stringify({
-          amount: amountInBani,
-          currency: 'RON',
-          customer_email: email || 'catalinsandu@protonmail.com',
-          description: `OfferFlow - Abonament Plan ${planName}`,
-          merchant_order_ext_ref: `ord_${Date.now()}_${plan}`,
-          capture_mode: 'AUTOMATIC',
-        }),
+        body: JSON.stringify(payload),
       });
     }
 

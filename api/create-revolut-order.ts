@@ -41,7 +41,16 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 1. Încercare apel API orders
+    const payload: Record<string, any> = {
+      amount: amountInBani,
+      currency: 'RON',
+      customer_email: email || 'catalinsandu@protonmail.com',
+      description: `OfferFlow - Abonament Plan ${planName}`,
+      merchant_order_ext_ref: `ord_${Date.now()}_${plan}`,
+      capture_mode: 'automatic',
+    };
+
+    // 1. Apel Revolut Orders API
     let response = await fetch(`${baseUrl}/orders`, {
       method: 'POST',
       headers: {
@@ -49,17 +58,9 @@ export default async function handler(req: any, res: any) {
         'Content-Type': 'application/json',
         'Revolut-Api-Version': '2023-09-01',
       },
-      body: JSON.stringify({
-        amount: amountInBani,
-        currency: 'RON',
-        customer_email: email || 'catalinsandu@protonmail.com',
-        description: `OfferFlow - Abonament Plan ${planName}`,
-        merchant_order_ext_ref: `ord_${Date.now()}_${plan}`,
-        capture_mode: 'AUTOMATIC',
-      }),
+      body: JSON.stringify(payload),
     });
 
-    // Fallback la endpoint-ul 1.0 dacă /orders returnează eroare de rută
     if (!response.ok && response.status === 404) {
       response = await fetch(`${baseUrl}/1.0/orders`, {
         method: 'POST',
@@ -68,14 +69,7 @@ export default async function handler(req: any, res: any) {
           'Content-Type': 'application/json',
           'Revolut-Api-Version': '2023-09-01',
         },
-        body: JSON.stringify({
-          amount: amountInBani,
-          currency: 'RON',
-          customer_email: email || 'catalinsandu@protonmail.com',
-          description: `OfferFlow - Abonament Plan ${planName}`,
-          merchant_order_ext_ref: `ord_${Date.now()}_${plan}`,
-          capture_mode: 'AUTOMATIC',
-        }),
+        body: JSON.stringify(payload),
       });
     }
 
@@ -88,7 +82,8 @@ export default async function handler(req: any, res: any) {
         (orderData.public_id
           ? `https://checkout.revolut.com/payment-link/${orderData.public_id}`
           : null) ||
-        (orderData.token ? `https://checkout.revolut.com/pay/${orderData.token}` : null);
+        (orderData.token ? `https://checkout.revolut.com/pay/${orderData.token}` : null) ||
+        (orderData.id ? `https://checkout.revolut.com/payment-link/${orderData.id}` : null);
 
       if (checkoutUrl) {
         return res.status(200).json({
