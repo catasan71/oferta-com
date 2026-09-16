@@ -16,10 +16,8 @@ import {
   Zap,
   CheckCircle2,
 } from 'lucide-react';
-import { Organization, DashboardTheme, ProformaInvoice } from '../types.ts';
+import { Organization, DashboardTheme } from '../types.ts';
 import { THEME_OPTIONS } from '../lib/themes.ts';
-import { getSavedProformas, exportProformaToPdf, OPERATOR_PROVIDER_INFO, ADMIN_NOTIFICATION_EMAIL } from '../lib/proforma.ts';
-import { ModernInvoiceTemplate } from './ModernInvoiceTemplate.tsx';
 
 interface CompanySettingsModalProps {
   organization: Organization;
@@ -28,7 +26,6 @@ interface CompanySettingsModalProps {
   isStarterPlan: boolean;
   currentTheme?: DashboardTheme;
   onSelectTheme?: (theme: DashboardTheme) => void;
-  onOpenRevolutCheckout?: () => void;
 }
 
 export const CompanySettingsModal: React.FC<CompanySettingsModalProps> = ({
@@ -38,9 +35,8 @@ export const CompanySettingsModal: React.FC<CompanySettingsModalProps> = ({
   isStarterPlan,
   currentTheme = 'slate',
   onSelectTheme,
-  onOpenRevolutCheckout,
 }) => {
-  const [activeTab, setActiveTab] = useState<'COMPANY' | 'APPEARANCE' | 'BILLING'>('COMPANY');
+  const [activeTab, setActiveTab] = useState<'COMPANY' | 'APPEARANCE'>('COMPANY');
   const [nume, setNume] = useState(organization.nume);
   const [cui, setCui] = useState(organization.cui);
   const [regCom, setRegCom] = useState(organization.reg_com || '');
@@ -48,8 +44,6 @@ export const CompanySettingsModal: React.FC<CompanySettingsModalProps> = ({
   const [iban, setIban] = useState(organization.iban || '');
   const [logoUrl, setLogoUrl] = useState(organization.logo_url || '');
   const [brandColor, setBrandColor] = useState(organization.brand_color || '#3b82f6');
-  const [savedProformas] = useState<ProformaInvoice[]>(() => getSavedProformas());
-  const [viewingInvoice, setViewingInvoice] = useState<ProformaInvoice | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,7 +114,7 @@ export const CompanySettingsModal: React.FC<CompanySettingsModalProps> = ({
             }`}
           >
             <Building2 className="w-3.5 h-3.5" />
-            <span>Date Companie & Facturare</span>
+            <span>Date Companie</span>
           </button>
 
           <button
@@ -134,24 +128,6 @@ export const CompanySettingsModal: React.FC<CompanySettingsModalProps> = ({
           >
             <Palette className="w-3.5 h-3.5" />
             <span>Culori & Teme Fundal</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('BILLING')}
-            className={`pb-2.5 px-3 text-xs font-bold transition-colors border-b-2 flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'BILLING'
-                ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
-                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
-          >
-            <CreditCard className="w-3.5 h-3.5" />
-            <span>Abonament & Proforme</span>
-            {savedProformas.length > 0 && (
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-bold">
-                {savedProformas.length}
-              </span>
-            )}
           </button>
         </div>
 
@@ -363,133 +339,113 @@ export const CompanySettingsModal: React.FC<CompanySettingsModalProps> = ({
             </div>
           )}
 
-          {/* TAB 3: ABONAMENT & FACTURI PROFORME */}
-          {activeTab === 'BILLING' && (
-            <div className="space-y-5">
-              {/* Card Plan Activ */}
-              <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-blue-300">
-                      Stare Abonament
-                    </span>
-                    <span
-                      className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
-                        isStarterPlan
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
-                          : 'bg-amber-500/20 text-amber-300 border border-amber-400/30'
-                      }`}
-                    >
-                      {isStarterPlan ? 'ACTIV • PLAN STARTER' : 'PLAN FREE'}
-                    </span>
-                  </div>
-                  <h4 className="text-base font-extrabold text-white mt-1">
-                    {isStarterPlan
-                      ? 'Acces complet: Oferte Active & White-Label'
-                      : 'Activează Planul Starter pentru a debloca ofertele'}
-                  </h4>
-                  <p className="text-xs text-slate-300 mt-0.5">
-                    Procesare securizată a plăților prin <strong>Revolut Pay</strong>
-                  </p>
+          {/* TAB 2: APPEARANCE */}
+          {activeTab === 'APPEARANCE' && (
+            <div className="space-y-6">
+              {/* 1. Selector Teme Vizuale Predefinite */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                  Temă Vizuală Dashboard &amp; Meniuri
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                  {THEME_OPTIONS.map((opt) => {
+                    const isSelected = currentTheme === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => onSelectTheme && onSelectTheme(opt.id)}
+                        className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                          isSelected
+                            ? 'border-blue-600 bg-blue-50/60 dark:bg-blue-950/40 shadow-xs ring-2 ring-blue-500/20'
+                            : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                        }`}
+                      >
+                        <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center shrink-0">
+                          {opt.id === 'dark' ? <Moon className="w-4 h-4 text-sky-400" /> : opt.id === 'warm' ? <Coffee className="w-4 h-4 text-amber-600" /> : opt.id === 'navy' ? <Shield className="w-4 h-4 text-blue-400" /> : <Sparkles className="w-4 h-4 text-blue-500" />}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                            {opt.label}
+                          </p>
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                            {opt.tag}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
-
-                {!isStarterPlan && onOpenRevolutCheckout && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      onOpenRevolutCheckout();
-                    }}
-                    className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold rounded-xl shadow-md flex items-center gap-1.5 shrink-0 cursor-pointer"
-                  >
-                    <Zap className="w-4 h-4 text-amber-300" />
-                    <span>Activează Starter (45 RON)</span>
-                  </button>
-                )}
               </div>
 
-              {/* Informații Operator Fiscal */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs space-y-1.5">
-                <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                  <span>Operator Fiscal & Emitent Facturi Proforme:</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600 dark:text-slate-300 pt-1">
-                  <div>
-                    <strong>{OPERATOR_PROVIDER_INFO.nume}</strong> • CUI: {OPERATOR_PROVIDER_INFO.cui}
-                  </div>
-                  <div>
-                    Sediu: {OPERATOR_PROVIDER_INFO.sediu}
-                  </div>
-                  <div>
-                    Email: <a href={`mailto:${ADMIN_NOTIFICATION_EMAIL}`} className="text-blue-600 dark:text-blue-400 underline">{ADMIN_NOTIFICATION_EMAIL}</a>
-                  </div>
-                  <div>
-                    Tel: {OPERATOR_PROVIDER_INFO.telefon}
-                  </div>
-                </div>
-                <p className="text-[10px] text-slate-500 pt-1 border-t border-slate-200 dark:border-slate-700">
-                  La fiecare plată cu cardul, factura proformă se transmite automat pe email-ul dvs. și către administrație ({ADMIN_NOTIFICATION_EMAIL}).
-                </p>
-              </div>
-
-              {/* Lista Facturilor Proforme */}
-              <div className="space-y-3">
+              {/* 2. Personalizare Culoare Brand & White-Label */}
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-4">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-1.5">
-                    <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                    Istoric Facturi Proforme Emise ({savedProformas.length})
-                  </h4>
-                </div>
-
-                {savedProformas.length === 0 ? (
-                  <div className="p-6 text-center rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 text-slate-500 text-xs">
-                    <FileText className="w-8 h-8 mx-auto text-slate-400 mb-2" />
-                    <p className="font-medium">Nicio factură proformă emisă încă.</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      La efectuarea unei plăți prin Revolut, proforma va apărea aici și va fi descărcabilă ca PDF.
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                      Culoare Brand Oferte (White-Label)
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Culoarea principală aplicată pe antetul ofertelor, butoane și PDF-uri.
                     </p>
                   </div>
-                ) : (
-                  <div className="space-y-2.5">
-                    {savedProformas.map((item) => (
-                      <div
-                        key={item.id}
-                        className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
-                      >
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-900 dark:text-white font-mono">
-                              {item.serie_numar}
-                            </span>
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
-                              ✓ Achitat Revolut
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                            {new Date(item.data_emiterii).toLocaleDateString('ro-RO')} • {item.descriere_serviciu}
-                          </p>
-                          <div className="flex items-center gap-3 text-[10px] text-slate-400 mt-0.5">
-                            <span>Destinatari: {item.transmis_client_email} &amp; {ADMIN_NOTIFICATION_EMAIL}</span>
-                          </div>
-                        </div>
+                  {!isStarterPlan && (
+                    <span className="text-[10px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
+                      Necesită Starter
+                    </span>
+                  )}
+                </div>
 
-                        <div className="flex items-center gap-3 self-end sm:self-center">
-                          <span className="font-black text-sm text-slate-900 dark:text-white">
-                            {item.valoare},00 RON
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setViewingInvoice(item)}
-                            className="px-3 py-1.5 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-xl border border-blue-200 dark:border-blue-800 transition-colors cursor-pointer"
-                          >
-                            Vezi Factură
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                    Alege Culoare Accent
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      value={brandColor}
+                      onChange={(e) => setBrandColor(e.target.value)}
+                      className="w-10 h-10 rounded-xl border border-slate-300 dark:border-slate-700 cursor-pointer p-0.5 shadow-2xs"
+                    />
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {presetColors.map((col) => (
+                        <button
+                          key={col}
+                          type="button"
+                          onClick={() => setBrandColor(col)}
+                          style={{ backgroundColor: col }}
+                          className={`w-7 h-7 rounded-full border border-black/10 transition-transform cursor-pointer ${
+                            brandColor === col ? 'scale-125 ring-2 ring-blue-500 ring-offset-2' : 'hover:scale-110'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <span className="font-mono text-xs text-slate-600 dark:text-slate-400 ml-auto font-bold">
+                      {brandColor}
+                    </span>
                   </div>
-                )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    URL Logo Companie
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="url"
+                      value={logoUrl}
+                      onChange={(e) => setLogoUrl(e.target.value)}
+                      placeholder="https://domeniu.ro/logo.png"
+                      className="w-full px-3.5 py-2 text-xs border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                    />
+                    {logoUrl && (
+                      <div className="w-9 h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white p-1 flex items-center justify-center shrink-0 overflow-hidden">
+                        <img src={logoUrl} alt="Logo Preview" className="max-w-full max-h-full object-contain" />
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -511,19 +467,6 @@ export const CompanySettingsModal: React.FC<CompanySettingsModalProps> = ({
             </button>
           </div>
         </form>
-
-        {/* Modal previzualizare Factură cu Template Modern UI */}
-        {viewingInvoice && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs overflow-y-auto">
-            <div className="relative w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800 my-6 max-h-[92vh] overflow-y-auto">
-              <ModernInvoiceTemplate
-                invoice={viewingInvoice}
-                onClose={() => setViewingInvoice(null)}
-                showActions={true}
-              />
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

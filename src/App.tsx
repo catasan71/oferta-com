@@ -21,8 +21,8 @@ import { QuoteBuilder } from './components/QuoteBuilder.tsx';
 import { PublicQuoteView } from './components/PublicQuoteView.tsx';
 import { CatalogManager } from './components/CatalogManager.tsx';
 import { CompanySettingsModal } from './components/CompanySettingsModal.tsx';
-import { RevolutCheckoutModal } from './components/RevolutCheckoutModal.tsx';
 import { ThemeSelectorModal } from './components/ThemeSelectorModal.tsx';
+import { RevolutCheckoutModal } from './components/RevolutCheckoutModal.tsx';
 import { LandingPage } from './components/LandingPage.tsx';
 import { AuthModal } from './components/AuthModal.tsx';
 import { LegalModal, LegalTab } from './components/LegalModal.tsx';
@@ -424,8 +424,7 @@ export function App() {
     } else {
       const maxQuotes = subscription.plan === 'FREE' ? 2 : subscription.plan === 'STARTER' ? 5 : 30;
       if (quotes.length >= maxQuotes) {
-        setSelectedPlanForUpgrade(subscription.plan === 'FREE' ? 'STARTER' : 'CLASIC');
-        setIsRevolutCheckoutOpen(true);
+        alert(`Ați atins limita de ${maxQuotes} oferte pentru planul curent.`);
         return;
       }
       setQuotes([savedQuote, ...quotes]);
@@ -453,7 +452,21 @@ export function App() {
     setQuotes(quotes.filter((q) => q.id !== quoteId));
   };
 
-  // Upgrade prin Revolut
+  // Management Catalog Articole
+  const handleAddCatalogProduct = (product: ProductService) => {
+    setCatalog([...catalog, product]);
+  };
+
+  const handleUpdateCatalogProduct = (product: ProductService) => {
+    setCatalog(catalog.map((p) => (p.id === product.id ? product : p)));
+  };
+
+  const handleDeleteCatalogProduct = (productId: string) => {
+    setCatalog(catalog.filter((p) => p.id !== productId));
+  };
+
+  const themeStyles = getThemeClasses(currentTheme);
+
   const handleSuccessUpgrade = (upgradedPlan: SubscriptionPlan) => {
     setSubscription({
       ...subscription,
@@ -461,8 +474,6 @@ export function App() {
       status: 'ACTIVE',
       valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     });
-
-    // Dacă utilizatorul a făcut upgrade din Landing Page, îl autentificăm și îl trecem în Dashboard
     if (!currentUser) {
       const newUser: User = {
         id: `usr_${Date.now()}`,
@@ -478,23 +489,7 @@ export function App() {
       } catch (e) {}
     }
     setCurrentView('DASHBOARD');
-    // Modalul rămâne deschis la pasul SUCCESS pentru ca utilizatorul să vadă confirmarea și să descarce factura proformă!
   };
-
-  // Management Catalog Articole
-  const handleAddCatalogProduct = (product: ProductService) => {
-    setCatalog([...catalog, product]);
-  };
-
-  const handleUpdateCatalogProduct = (product: ProductService) => {
-    setCatalog(catalog.map((p) => (p.id === product.id ? product : p)));
-  };
-
-  const handleDeleteCatalogProduct = (productId: string) => {
-    setCatalog(catalog.filter((p) => p.id !== productId));
-  };
-
-  const themeStyles = getThemeClasses(currentTheme);
 
   return (
     <div className={`min-h-screen flex flex-col font-sans transition-colors duration-200 ${themeStyles.bg}`}>
@@ -555,8 +550,8 @@ export function App() {
                   setCurrentView('BUILDER');
                 }}
                 onDeleteQuote={handleDeleteQuote}
-                onUpgradeToStarter={() => {
-                  setSelectedPlanForUpgrade('STARTER');
+                onOpenRevolutCheckout={(plan) => {
+                  setSelectedPlanForUpgrade(plan || 'STARTER');
                   setIsRevolutCheckoutOpen(true);
                 }}
               />
@@ -646,14 +641,19 @@ export function App() {
           isStarterPlan={subscription.plan !== 'FREE'}
           currentTheme={currentTheme}
           onSelectTheme={setCurrentTheme}
-          onOpenRevolutCheckout={() => {
-            setSelectedPlanForUpgrade('STARTER');
-            setIsRevolutCheckoutOpen(true);
-          }}
         />
       )}
 
-      {/* 4. Modal Checkout Revolut */}
+      {/* 4. Modal Selector Teme / Culori */}
+      {isThemeModalOpen && (
+        <ThemeSelectorModal
+          currentTheme={currentTheme}
+          onSelectTheme={setCurrentTheme}
+          onClose={() => setIsThemeModalOpen(false)}
+        />
+      )}
+
+      {/* 5. Modal Checkout Oficial Revolut / JuridicPro */}
       {isRevolutCheckoutOpen && (
         <RevolutCheckoutModal
           organization={organization}
@@ -661,15 +661,6 @@ export function App() {
           initialSelectedPlan={selectedPlanForUpgrade}
           onClose={() => setIsRevolutCheckoutOpen(false)}
           onSuccessUpgrade={handleSuccessUpgrade}
-        />
-      )}
-
-      {/* 5. Modal Selector Teme / Culori */}
-      {isThemeModalOpen && (
-        <ThemeSelectorModal
-          currentTheme={currentTheme}
-          onSelectTheme={setCurrentTheme}
-          onClose={() => setIsThemeModalOpen(false)}
         />
       )}
     </div>

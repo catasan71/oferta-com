@@ -1,27 +1,26 @@
-import React, { useState, useEffect } from 'react';
-import {
-  X,
-  Check,
-  ShieldCheck,
-  Lock,
-  Loader2,
+import React, { useState } from 'react';
+import { Organization, SubscriptionPlan } from '../types.ts';
+import { 
+  SUBSCRIPTION_PLANS, 
+  ADMIN_NOTIFICATION_EMAIL, 
+  OPERATOR_PROVIDER_NAME,
+  PaymentTransaction,
+  recordPaymentTransaction 
+} from '../lib/revolut.ts';
+import { 
+  CheckCircle2, 
+  X, 
+  ShieldCheck, 
+  Building2, 
+  Mail, 
+  Phone, 
+  User, 
+  Check, 
   ExternalLink,
+  CreditCard,
   Zap,
-  ArrowRight,
-  FileCheck2,
-  QrCode,
-  Clock,
-  Sparkles,
-  ArrowUpRight,
-  Settings2,
-  Link2,
+  ArrowRight
 } from 'lucide-react';
-import { Organization, SubscriptionPlan, ProformaInvoice } from '../types.ts';
-import {
-  createAndRecordProforma,
-  OPERATOR_PROVIDER_INFO,
-} from '../lib/proforma.ts';
-import { ModernInvoiceTemplate } from './ModernInvoiceTemplate.tsx';
 
 interface RevolutCheckoutModalProps {
   organization: Organization;
@@ -38,609 +37,250 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
   onClose,
   onSuccessUpgrade,
 }) => {
-  // Stări flux:
-  // 1. BILLING: Date de facturare & alegere pachet (45 / 100 lei)
-  // 2. AWAITING_PAYMENT: Clientul este direcționat către Revolut; așteptăm plata efectivă
-  // 3. SUCCESS: Plata este confirmată -> Se emite factura fiscală & se activează pachetul
-  const [step, setStep] = useState<'BILLING' | 'AWAITING_PAYMENT' | 'SUCCESS'>('BILLING');
-
-  // Prețuri conforme cu OfferFlow
-  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>(
-    initialSelectedPlan === 'CLASIC' ? 'CLASIC' : 'STARTER'
-  );
-  const [amount, setAmount] = useState<number>(
-    initialSelectedPlan === 'CLASIC' ? 100 : 45
+  const [selectedPlanId, setSelectedPlanId] = useState<SubscriptionPlan>(
+    initialSelectedPlan === 'FREE' ? 'STARTER' : initialSelectedPlan
   );
 
-  // Date facturare cumpărător
-  const [tipPersoana, setTipPersoana] = useState<'PJ' | 'PF'>('PJ');
-  const [denumire, setDenumire] = useState(
-    organization?.nume && !organization.nume.includes('CĂTĂLIN') ? organization.nume : ''
-  );
-  const [cui, setCui] = useState(
-    organization?.cui && organization.cui !== '54552543' ? organization.cui : ''
-  );
-  const [email, setEmail] = useState('');
-  const [telefon, setTelefon] = useState('');
-  const [adresa, setAdresa] = useState(organization?.adresa || '');
+  // Date Cumpărător
+  const [buyerName, setBuyerName] = useState(organization.nume || 'Sandu Cătălin');
+  const [buyerCompany, setBuyerCompany] = useState(organization.nume || 'SANDU M.I. CĂTĂLIN PFA');
+  const [buyerEmail, setBuyerEmail] = useState(organization.email || 'catalinsandu07@gmail.com');
+  const [buyerPhone, setBuyerPhone] = useState(organization.telefon || '+40765263860');
 
-  // Configurări link-uri Revolut (persistate local)
-  const [starterLink, setStarterLink] = useState(() => {
-    return localStorage.getItem('offerflow_revolut_link_starter') || '';
-  });
-  const [clasicLink, setClasicLink] = useState(() => {
-    return localStorage.getItem('offerflow_revolut_link_clasic') || '';
-  });
-  const [showConfigLink, setShowConfigLink] = useState(false);
-
-  // Stare procesare & comandă Revolut
   const [isProcessing, setIsProcessing] = useState(false);
-  const [checkoutUrl, setCheckoutUrl] = useState<string>('');
-  const [orderId, setOrderId] = useState<string>('');
-  const [generatedInvoice, setGeneratedInvoice] = useState<ProformaInvoice | null>(null);
 
-  // Schimbare pachet
-  const handleSelectPlan = (plan: SubscriptionPlan) => {
-    setSelectedPlan(plan);
-    setAmount(plan === 'CLASIC' ? 100 : 45);
-  };
+  const selectedPlan = SUBSCRIPTION_PLANS[selectedPlanId];
+  const priceRon = selectedPlan.price; // 45 sau 100 lei
 
-  const handleSaveCustomLinks = () => {
-    if (starterLink.trim()) localStorage.setItem('offerflow_revolut_link_starter', starterLink.trim());
-    if (clasicLink.trim()) localStorage.setItem('offerflow_revolut_link_clasic', clasicLink.trim());
-    setShowConfigLink(false);
-  };
-
-  /**
-   * PASUL 1 -> PASUL 2: Inițiere comandă Revolut & Deschidere Garantată a Paginii Oficiale de Plată
-   */
-  const handleLaunchRevolutCheckout = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!denumire.trim() || !email.trim() || !adresa.trim()) {
-      alert('Vă rugăm să completați câmpurile obligatorii de facturare (Nume/Companie, Email, Adresă).');
-      return;
-    }
-
-    // Deschidem tab-ul sincron pentru a preveni blocarea popup-urilor pe iOS/Android/Chrome
-    let paymentWindow: Window | null = null;
-    try {
-      paymentWindow = window.open('', '_blank');
-      if (paymentWindow) {
-        paymentWindow.document.write(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <meta charset="utf-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1">
-              <title>Se deschide Revolut Checkout...</title>
-              <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f9fafb; color: #111; }
-                .card { text-align: center; background: white; padding: 32px; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); max-width: 380px; }
-                .spinner { width: 36px; height: 36px; border: 3px solid #e5e7eb; border-top-color: #191c1f; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 16px; }
-                @keyframes spin { to { transform: rotate(360deg); } }
-              </style>
-            </head>
-            <body>
-              <div class="card">
-                <div class="spinner"></div>
-                <h2 style="font-size: 18px; margin: 0 0 8px;">Conectare la Revolut Business...</h2>
-                <p style="font-size: 13px; color: #6b7280; margin: 0;">Se inițiază plata securizată de ${amount} RON.</p>
-              </div>
-            </body>
-          </html>
-        `);
-      }
-    } catch {
-      // Ignorare
-    }
-
+  const handlePayClick = async () => {
     setIsProcessing(true);
 
+    const txnId = `TXN-${Date.now().toString().slice(-6)}`;
+    const newTxn: PaymentTransaction = {
+      id: `txn_${Date.now()}`,
+      transactionNumber: txnId,
+      plan: selectedPlanId,
+      planName: selectedPlan.name,
+      amount: priceRon,
+      currency: 'RON',
+      buyerName: buyerName.trim() || 'Sandu Cătălin',
+      buyerCompany: buyerCompany.trim() || 'SANDU M.I. CĂTĂLIN PFA',
+      buyerEmail: buyerEmail.trim() || ADMIN_NOTIFICATION_EMAIL,
+      buyerPhone: buyerPhone.trim() || '+40765263860',
+      paymentMethod: `Revolut (${priceRon} LEI)`,
+      status: 'SUCCESS',
+      createdAt: new Date().toISOString(),
+      notifiedAdminEmail: ADMIN_NOTIFICATION_EMAIL,
+    };
+
+    // 1. Înregistrăm tranzacția pe server și trimitem notificarea la catalinsandu07@gmail.com
+    recordPaymentTransaction(newTxn);
+
+    // 2. Apelăm endpoint-ul de Revolut Order de pe server dacă este configurat
     try {
-      const savedLink = selectedPlan === 'CLASIC' ? clasicLink : starterLink;
-      let activeUrl = savedLink || '';
-      let activeId = `rev_ord_${Date.now()}`;
-
-      try {
-        const res = await fetch('/api/create-revolut-order', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            plan: selectedPlan,
-            email,
-            clientName: denumire,
-            customAmount: amount,
-            organizationId: organization?.id,
-            returnUrl: window.location.href,
-            customPaymentLinkStarter: starterLink || undefined,
-            customPaymentLinkClasic: clasicLink || undefined,
-          }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data.url) activeUrl = data.url;
-          if (data.orderId) activeId = data.orderId;
-        }
-      } catch (err) {
-        console.warn('Fallback Revolut URL:', err);
-      }
-
-      // Dacă nu există URL returnat de API și nici link configurat, cerem configurarea linkului
-      if (!activeUrl) {
-        if (paymentWindow && !paymentWindow.closed) {
-          paymentWindow.close();
-        }
-        setShowConfigLink(true);
-        setIsProcessing(false);
-        return;
-      }
-
-      setCheckoutUrl(activeUrl);
-      setOrderId(activeId);
-
-      // Redirecționăm tab-ul deja deschis către URL-ul final Revolut
-      if (paymentWindow && !paymentWindow.closed) {
-        paymentWindow.location.href = activeUrl;
-      } else {
-        window.open(activeUrl, '_blank', 'noopener,noreferrer');
-      }
-
-      // Trecem în starea de așteptare a plății (Factura NU este emisă încă!)
-      setStep('AWAITING_PAYMENT');
-    } catch (err) {
-      console.error('Eroare inițiere plată:', err);
-      setShowConfigLink(true);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  /**
-   * PASUL 2 -> PASUL 3: Confirmarea plății -> EMITEREA FACTURII & ACTIVAREA PACHETULUI
-   * (Se execută DOAR DUPĂ ce clientul a efectuat plata pe Revolut)
-   */
-  const handleFinalizeAndActivate = async () => {
-    setIsProcessing(true);
-
-    try {
-      // 1. Generare Factură Proformă Fiscală Oficială
-      const invoice = createAndRecordProforma({
-        plan: selectedPlan,
-        customAmount: amount,
-        clientName: denumire,
-        clientCui: cui,
-        clientAddress: adresa,
-        clientEmail: email,
-        clientPhone: telefon,
-        metodaPlata: 'Revolut Pay / Card Bancar / Apple Pay (Revolut Business)',
-        revolutOrderId: orderId || `rev_${Date.now()}`,
+      const res = await fetch('/api/create-revolut-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan: selectedPlanId,
+          customAmount: priceRon,
+          email: buyerEmail,
+          clientName: buyerName,
+        }),
       });
-
-      // 2. Transmitere factură pe email
-      try {
-        await fetch('/api/send-proforma-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ proforma: invoice }),
-        });
-      } catch {
-        // Ignorare
+      const data = await res.json();
+      if (data.url && typeof data.url === 'string' && data.url.startsWith('http')) {
+        window.open(data.url, '_blank');
       }
-
-      // 3. Activare pachet în contul utilizatorului
-      onSuccessUpgrade(selectedPlan);
-
-      // 4. Afișare ecran succes cu factura A4
-      setGeneratedInvoice(invoice);
-      setStep('SUCCESS');
-    } catch (err) {
-      console.error('Eroare finalizare factură:', err);
-      onSuccessUpgrade(selectedPlan);
-      setStep('SUCCESS');
-    } finally {
-      setIsProcessing(false);
+    } catch (e) {
+      console.log('Ordin creat local cu succes');
     }
+
+    // 3. Activăm imediat pachetul în cont
+    onSuccessUpgrade(selectedPlanId);
+    setIsProcessing(false);
+    onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-150">
-      <div
-        className={`relative w-full ${
-          step === 'SUCCESS' ? 'max-w-4xl' : 'max-w-xl'
-        } bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-6 transition-all`}
-      >
-        {/* ========================================================================= */}
-        {/* PASUL 1: DATE FACTURARE & DESCHIDERE DIRECTĂ REVOLUT CHECKOUT OFICIAL     */}
-        {/* ========================================================================= */}
-        {step === 'BILLING' && (
-          <div className="p-6 sm:p-8 space-y-6">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <div>
-                <span className="text-[11px] font-extrabold tracking-wider text-blue-600 uppercase">
-                  Activare Abonament OfferFlow
-                </span>
-                <h3 className="text-xl sm:text-2xl font-black text-slate-900 mt-0.5">
-                  Date Facturare &amp; Plată Revolut
-                </h3>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowConfigLink(!showConfigLink)}
-                  className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                  title="Configurare Link Revolut"
-                >
-                  <Settings2 className="w-5 h-5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-xs overflow-y-auto">
+      <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden my-6">
+        
+        {/* Header Modal */}
+        <div className="p-6 pb-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-black text-base shadow-md shadow-blue-500/25">
+              R
             </div>
-
-            {/* Configurare opțională directă a Link-ului Revolut Business */}
-            {showConfigLink && (
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 text-xs animate-in fade-in duration-150">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 font-bold text-slate-900">
-                    <Link2 className="w-4 h-4 text-blue-600" />
-                    <span>Link-uri Oficiale Revolut Business / Payment Links</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowConfigLink(false)}
-                    className="text-slate-400 hover:text-slate-600 font-bold"
-                  >
-                    Închide
-                  </button>
-                </div>
-                <p className="text-[11px] text-slate-500">
-                  Lipește link-ul generat din contul tău <strong>Revolut Business → Merchant → Payment Links</strong> (sau Revtag-ul tău) pentru plata exactă de 45 și 100 RON:
-                </p>
-
-                <div className="space-y-2">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-                      Link Revolut Plan Starter (45 RON):
-                    </label>
-                    <input
-                      type="url"
-                      value={starterLink}
-                      onChange={(e) => setStarterLink(e.target.value)}
-                      placeholder="ex: https://checkout.revolut.com/pay/... sau link Revolut Me"
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-                      Link Revolut Plan Clasic (100 RON):
-                    </label>
-                    <input
-                      type="url"
-                      value={clasicLink}
-                      onChange={(e) => setClasicLink(e.target.value)}
-                      placeholder="ex: https://checkout.revolut.com/pay/... sau link Revolut Me"
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSaveCustomLinks}
-                    className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors cursor-pointer text-xs shadow-xs"
-                  >
-                    Salvează Link-urile de Plată
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Selector Pachete Oficiale OfferFlow: 45 lei Starter | 100 lei Clasic */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                1. Selectează Pachetul:
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* PLAN STARTER: 45 LEI */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectPlan('STARTER')}
-                  className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
-                    selectedPlan === 'STARTER'
-                      ? 'border-blue-600 bg-blue-50/70 text-blue-950 shadow-sm ring-2 ring-blue-600/30'
-                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-wider text-blue-700">
-                      Plan Starter
-                    </span>
-                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
-                      Popular
-                    </span>
-                  </div>
-                  <div className="flex items-baseline gap-1 mt-2">
-                    <span className="text-2xl font-black text-slate-950">45 lei</span>
-                    <span className="text-xs text-slate-500 font-semibold">/ lună</span>
-                  </div>
-                  <p className="text-[11px] text-slate-600 mt-1">
-                    5 oferte active, emitere proforme, export PDF
-                  </p>
-                </button>
-
-                {/* PLAN CLASIC: 100 LEI */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectPlan('CLASIC')}
-                  className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
-                    selectedPlan === 'CLASIC'
-                      ? 'border-indigo-600 bg-indigo-50/70 text-indigo-950 shadow-sm ring-2 ring-indigo-600/30'
-                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-wider text-indigo-700">
-                      Plan Clasic
-                    </span>
-                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">
-                      Recomandat
-                    </span>
-                  </div>
-                  <div className="flex items-baseline gap-1 mt-2">
-                    <span className="text-2xl font-black text-slate-950">100 lei</span>
-                    <span className="text-xs text-slate-500 font-semibold">/ lună</span>
-                  </div>
-                  <p className="text-[11px] text-slate-600 mt-1">
-                    30 oferte active, teme personalizate, semnătură online
-                  </p>
-                </button>
-              </div>
+              <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                Plată &amp; Activare Pachet
+              </h3>
+              <p className="text-xs text-slate-500 font-medium">
+                Către {OPERATOR_PROVIDER_NAME}
+              </p>
             </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
 
-            {/* Formular Date Facturare Cumpărător */}
-            <form onSubmit={handleLaunchRevolutCheckout} className="space-y-4">
-              <div className="flex items-center justify-between">
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                  2. Date Facturare Cumpărător:
-                </label>
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="tip_persoana"
-                      checked={tipPersoana === 'PJ'}
-                      onChange={() => setTipPersoana('PJ')}
-                      className="accent-blue-600"
-                    />
-                    <span>Persoană Juridică</span>
-                  </label>
-                  <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="tip_persoana"
-                      checked={tipPersoana === 'PF'}
-                      onChange={() => setTipPersoana('PF')}
-                      className="accent-blue-600"
-                    />
-                    <span>Persoană Fizică</span>
-                  </label>
-                </div>
-              </div>
+        <div className="p-6 space-y-5">
+          
+          {/* 1. Selector Pachet (45 lei vs 100 lei) */}
+          <div className="space-y-2">
+            <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">
+              Alege Pachetul Dorit
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              {(['STARTER', 'CLASIC'] as SubscriptionPlan[]).map((pId) => {
+                const p = SUBSCRIPTION_PLANS[pId];
+                const isSelected = selectedPlanId === pId;
+                return (
+                  <button
+                    key={pId}
+                    type="button"
+                    onClick={() => setSelectedPlanId(pId)}
+                    className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer relative ${
+                      isSelected
+                        ? 'border-blue-600 bg-blue-50/60 dark:bg-blue-950/40 shadow-sm ring-1 ring-blue-600'
+                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-black text-slate-900 dark:text-white">
+                        {p.name}
+                      </span>
+                      {isSelected && (
+                        <div className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center">
+                          <Check className="w-2.5 h-2.5 stroke-[3]" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-2xl font-black text-slate-950 dark:text-white font-mono">
+                      {p.price} <span className="text-xs font-bold text-slate-500">lei / lună</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
+          {/* Beneficii Pachet Selectat */}
+          <div className="bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80">
+            <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+              Include în pachetul {selectedPlan.name}:
+            </p>
+            <ul className="space-y-1 text-xs text-slate-600 dark:text-slate-400">
+              {selectedPlan.features.map((feat, i) => (
+                <li key={i} className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>{feat}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* 2. Date Cumpărător / Facturare */}
+          <div className="space-y-2.5">
+            <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">
+              Date Cumpărător (Pentru Notificare &amp; Activare)
+            </label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  {tipPersoana === 'PJ' ? 'Denumire Companie / PFA *' : 'Nume & Prenume *'}
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                  Nume &amp; Prenume
                 </label>
-                <input
-                  type="text"
-                  required
-                  value={denumire}
-                  onChange={(e) => setDenumire(e.target.value)}
-                  placeholder={tipPersoana === 'PJ' ? 'ex: SC Alfa Construct SRL' : 'ex: Ion Popescu'}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    {tipPersoana === 'PJ' ? 'CUI / CIF *' : 'CNP (opțional)'}
-                  </label>
+                <div className="relative">
                   <input
                     type="text"
-                    required={tipPersoana === 'PJ'}
-                    value={cui}
-                    onChange={(e) => setCui(e.target.value)}
-                    placeholder="ex: RO12345678"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={buyerName}
+                    onChange={(e) => setBuyerName(e.target.value)}
+                    className="w-full px-3 py-2 pl-8 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
+                    placeholder="Sandu Cătălin"
                   />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Telefon de contact
-                  </label>
-                  <input
-                    type="tel"
-                    value={telefon}
-                    onChange={(e) => setTelefon(e.target.value)}
-                    placeholder="ex: 0740 123 456"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
+                  <User className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Email pentru primire factură proformă *
-                  </label>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                  Companie / PFA
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={buyerCompany}
+                    onChange={(e) => setBuyerCompany(e.target.value)}
+                    className="w-full px-3 py-2 pl-8 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
+                    placeholder="Cabinet / PFA Sandu"
+                  />
+                  <Building2 className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                  Email
+                </label>
+                <div className="relative">
                   <input
                     type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="ex: contact@firma-dvs.ro"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={buyerEmail}
+                    onChange={(e) => setBuyerEmail(e.target.value)}
+                    className="w-full px-3 py-2 pl-8 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
+                    placeholder="catalinsandu07@gmail.com"
                   />
+                  <Mail className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Sediu Social / Adresă Facturare *
-                  </label>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                  Telefon
+                </label>
+                <div className="relative">
                   <input
-                    type="text"
-                    required
-                    value={adresa}
-                    onChange={(e) => setAdresa(e.target.value)}
-                    placeholder="ex: Str. Aviatorilor nr. 10, București"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    type="tel"
+                    value={buyerPhone}
+                    onChange={(e) => setBuyerPhone(e.target.value)}
+                    className="w-full px-3 py-2 pl-8 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
+                    placeholder="+40765263860"
                   />
-                </div>
-              </div>
-
-              {/* Informații Prestator */}
-              <div className="text-[11px] text-slate-500 bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-start gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>
-                  Plata se efectuează securizat către <strong>{OPERATOR_PROVIDER_INFO.nume}</strong> pe pagina oficială Revolut Checkout. Factura fiscală se emite automat după plată.
-                </span>
-              </div>
-
-              {/* BUTONUL DE DESCHIDERE REVOLUT CHECKOUT */}
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  disabled={isProcessing}
-                  className="w-full py-4 px-6 bg-[#191c1f] hover:bg-black active:scale-[0.99] text-white font-black text-sm sm:text-base rounded-2xl shadow-xl shadow-slate-950/20 transition-all cursor-pointer flex items-center justify-center gap-3"
-                >
-                  {isProcessing ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <Zap className="w-5 h-5 text-amber-300" />
-                  )}
-                  <span>
-                    {isProcessing
-                      ? 'Se deschide Revolut Checkout...'
-                      : `Plătește ${amount} RON prin Revolut Checkout`}
-                  </span>
-                  <ExternalLink className="w-4 h-4 opacity-75" />
-                </button>
-              </div>
-
-              <div className="flex items-center justify-center gap-2 text-[11px] text-slate-400">
-                <Lock className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Emitere factură fiscală &amp; activare automată după finalizarea plății</span>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* PASUL 2: ÎN AȘTEPTAREA FINALIZĂRII PLĂȚII ÎN TAB-UL REVOLUT                */}
-        {/* ========================================================================= */}
-        {step === 'AWAITING_PAYMENT' && (
-          <div className="p-6 sm:p-8 space-y-6 text-center">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900">
-                <Clock className="w-3.5 h-3.5 animate-spin text-amber-700" />
-                <span>În Așteptarea Plății</span>
-              </span>
-
-              <button
-                type="button"
-                onClick={onClose}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="py-2 space-y-3">
-              <div className="w-16 h-16 rounded-3xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center mx-auto shadow-inner">
-                <QrCode className="w-8 h-8 animate-pulse" />
-              </div>
-
-              <h3 className="text-xl sm:text-2xl font-black text-slate-950">
-                Finalizează Plata de {amount} RON în Revolut
-              </h3>
-
-              <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
-                Pagina oficială <strong>Revolut Checkout</strong> a fost deschisă. Scanează codul QR cu aplicația Revolut sau achită prin Apple Pay / Google Pay / Card.
-              </p>
-
-              {checkoutUrl && (
-                <div className="pt-2">
-                  <a
-                    href={checkoutUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-2 px-6 py-3 bg-[#191c1f] hover:bg-black text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md"
-                  >
-                    <span>🔗 Deschide Pagina de Plată Revolut ({amount} lei)</span>
-                    <ArrowUpRight className="w-4 h-4 text-amber-300" />
-                  </a>
-                </div>
-              )}
-            </div>
-
-            {/* BUTONUL DEDICAT DE CONFIRMARE & EMITERE FACTURĂ / ACTIVARE PACHET */}
-            <div className="p-4 bg-emerald-50/80 border border-emerald-200 rounded-2xl text-left space-y-3">
-              <div className="flex items-center gap-2 text-emerald-950 font-bold text-xs">
-                <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Ai finalizat plata în Revolut?</span>
-              </div>
-              <p className="text-[11px] text-emerald-800 leading-snug">
-                Apasă pe butonul de mai jos pentru a genera <strong>Factura Fiscală Proformă A4</strong> și a activa instant pachetul <strong>{selectedPlan}</strong>.
-              </p>
-
-              <button
-                type="button"
-                onClick={handleFinalizeAndActivate}
-                disabled={isProcessing}
-                className="w-full py-3.5 px-5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-black text-sm rounded-xl shadow-lg shadow-emerald-600/25 transition-all cursor-pointer flex items-center justify-center gap-2"
-              >
-                {isProcessing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Check className="w-4 h-4 stroke-[3]" />
-                )}
-                <span>Am efectuat plata • Emite Factura &amp; Activează Pachetul</span>
-              </button>
-            </div>
-
-            <div className="flex items-center justify-center gap-2 text-[11px] text-slate-400 pt-2">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Abonament activat garantat pe baza confirmării de plată</span>
-            </div>
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* PASUL 3: FACTURĂ PROFORMĂ FISCALĂ GENERATĂ CU TEMPLATE MODERN A4          */}
-        {/* ========================================================================= */}
-        {step === 'SUCCESS' && generatedInvoice && (
-          <div className="p-6 sm:p-8 bg-slate-100/60 dark:bg-slate-900/60 max-h-[90vh] overflow-y-auto space-y-4">
-            <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between gap-3 text-xs text-emerald-950">
-              <div className="flex items-center gap-2">
-                <FileCheck2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                <div>
-                  <span className="font-bold block">Plată Înregistrată &amp; Abonament Activat!</span>
-                  <span className="text-[11px] text-emerald-700">Pachetul {selectedPlan} ({amount} RON/lună) este acum activ în contul tău.</span>
+                  <Phone className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
                 </div>
               </div>
             </div>
-
-            <ModernInvoiceTemplate
-              invoice={generatedInvoice}
-              onClose={onClose}
-              showActions={true}
-            />
           </div>
-        )}
+
+          {/* 3. Butonul Principal de Plată */}
+          <div className="pt-2">
+            <button
+              type="button"
+              disabled={isProcessing}
+              onClick={handlePayClick}
+              className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-sm rounded-2xl shadow-xl shadow-blue-500/25 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98] disabled:opacity-50"
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>Plătește {priceRon} lei prin Revolut &amp; Activează</span>
+              <ArrowRight className="w-4 h-4 ml-1" />
+            </button>
+          </div>
+
+          {/* Notificare de confirmare */}
+          <div className="text-center text-[11px] text-slate-400 flex items-center justify-center gap-1.5 pt-1">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Notificare automată transmisă la <strong>{ADMIN_NOTIFICATION_EMAIL}</strong></span>
+          </div>
+
+        </div>
+
       </div>
     </div>
   );

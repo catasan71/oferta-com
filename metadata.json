@@ -1,6 +1,6 @@
 {
   "name": "OfferFlow",
-  "description": "Platformă SaaS B2B pentru IMM-uri dedicată creării, transmiterii pe email și link securizat, negocierii interactive, semnării digitale și monitorizării ofertelor comerciale.",
+  "description": "Platformă completă de ofertare comercială B2B: creează devize și oferte de preț profesionale în 60 de secunde, trimite link securizat clienților, colectează semnături digitale legale și încasează prin Revolut.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -1,129 +1,111 @@
-export interface RevolutOrderParams {
-  organizationId: string;
-  customerEmail: string;
-  amount: number; // în unități monetare (ex: 45 RON)
-  currency: string; // RON, EUR
-  returnUrl: string;
-  description?: string;
+import { SubscriptionPlan } from '../types.ts';
+
+export interface PlanConfig {
+  id: SubscriptionPlan;
+  name: string;
+  price: number;
+  period: string;
+  description: string;
+  badge?: string;
+  popular?: boolean;
+  features: string[];
 }
 
-export interface RevolutOrderResponse {
+export const SUBSCRIPTION_PLANS: Record<SubscriptionPlan, PlanConfig> = {
+  FREE: {
+    id: 'FREE',
+    name: 'Plan Gratuit',
+    price: 0,
+    period: 'gratuit',
+    description: 'Pentru testare și oferte ocazionale',
+    features: [
+      'Maxim 2 oferte comerciale active',
+      'Catalog de bază articole',
+      'Semnare digitală standard',
+    ],
+  },
+  STARTER: {
+    id: 'STARTER',
+    name: 'Pachet Starter',
+    price: 45,
+    period: 'lunar',
+    badge: 'Recomandat IMM & PFA',
+    popular: true,
+    description: 'Complet pentru profesioniști și afaceri în creștere',
+    features: [
+      'Până la 5 oferte comerciale active simultan',
+      'Branding propriu complet (Logo & Culori)',
+      'Export PDF profesional de înaltă rezoluție',
+      'Semnare digitală pe mobil și desktop',
+      'Notificări automate la deschiderea ofertei de către client',
+    ],
+  },
+  CLASIC: {
+    id: 'CLASIC',
+    name: 'Pachet Clasic',
+    price: 100,
+    period: 'lunar',
+    badge: 'Volum & Echipe',
+    popular: false,
+    description: 'Pentru societăți, cabinete și companii cu volum mare',
+    features: [
+      'Până la 30 oferte comerciale active simultan',
+      'Catalog extins nelimitat',
+      'Toate facilitățile din pachetul Starter',
+      'Urmărire avansată status & loguri de semnare eIDAS',
+      'Asistență prioritară',
+    ],
+  },
+};
+
+export const ADMIN_NOTIFICATION_EMAIL = 'catalinsandu07@gmail.com';
+export const OPERATOR_PROVIDER_NAME = 'SANDU M.I. CĂTĂLIN PERSOANĂ FIZICĂ AUTORIZATĂ';
+
+export interface PaymentTransaction {
   id: string;
-  token: string;
-  checkout_url: string;
-  state: 'PENDING' | 'PROCESSING' | 'AUTHORISED' | 'COMPLETED' | 'CANCELLED';
-  order_amount: {
-    value: number;
-    currency: string;
-  };
+  transactionNumber: string;
+  plan: SubscriptionPlan;
+  planName: string;
+  amount: number;
+  currency: string;
+  buyerName: string;
+  buyerCompany: string;
+  buyerEmail: string;
+  buyerPhone: string;
+  paymentMethod: string;
+  status: 'SUCCESS' | 'PENDING' | 'FAILED';
+  createdAt: string;
+  notifiedAdminEmail: string;
 }
 
-export interface RevolutWebhookPayload {
-  event: 'ORDER_COMPLETED' | 'ORDER_AUTHORISED' | 'ORDER_CANCELLED' | 'ORDER_PAYMENT_FAILED';
-  timestamp: string;
-  order_id: string;
-  merchant_order_ext_ref?: string; // organizationId
-}
+const STORAGE_KEY_TRANSACTIONS = 'offerflow_payment_transactions';
 
-/**
- * Returnează URL-ul de bază pentru API Revolut Merchant (sandbox sau producție)
- */
-export function getRevolutBaseUrl(): string {
-  const env = process.env.REVOLUT_ENVIRONMENT || 'sandbox';
-  return env === 'production'
-    ? 'https://merchant.revolut.com/api/1.0'
-    : 'https://sandbox-merchant.revolut.com/api/1.0';
-}
-
-/**
- * Creează o comandă de plată Revolut Merchant Checkout pentru abonamentul Starter
- */
-export async function createRevolutOrder(params: RevolutOrderParams): Promise<{
-  success: boolean;
-  orderId?: string;
-  checkoutUrl?: string;
-  error?: string;
-}> {
-  const apiKey = process.env.REVOLUT_API_KEY;
-  const baseUrl = getRevolutBaseUrl();
-
-  // Suma în bani/cenți pentru API (ex: 149.00 RON = 14900 bani)
-  const amountInMinorUnits = Math.round(params.amount * 100);
-
-  if (apiKey && !apiKey.includes('xxxxxxxx')) {
-    try {
-      const response = await fetch(`${baseUrl}/orders`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'Revolut-Api-Version': '2023-09-01',
-        },
-        body: JSON.stringify({
-          amount: amountInMinorUnits,
-          currency: params.currency || 'RON',
-          merchant_order_ext_ref: params.organizationId,
-          customer_email: params.customerEmail,
-          description: params.description || 'OfferFlow - Abonament Plan Starter (30 zile)',
-          redirect_url: params.returnUrl,
-          settlement_currency: params.currency || 'RON',
-          capture_mode: 'AUTOMATIC',
-        }),
-      });
-
-      const orderData: RevolutOrderResponse = await response.json();
-
-      if (!response.ok) {
-        console.error('Eroare Revolut Order API:', orderData);
-        return {
-          success: false,
-          error: (orderData as any)?.message || 'Nu s-a putut genera comanda Revolut Merchant',
-        };
-      }
-
-      return {
-        success: true,
-        orderId: orderData.id,
-        checkoutUrl: orderData.checkout_url || `https://sandbox-merchant.revolut.com/pay/${orderData.token}`,
-      };
-    } catch (err: any) {
-      console.error('Excepție Revolut Create Order:', err);
-      return {
-        success: false,
-        error: err?.message || 'Eroare de comunicare cu serverul Revolut',
-      };
-    }
-  }
-
-  // Mod Sandbox / Dezvoltare simulat (când cheia nu este configurată)
-  const simulatedOrderId = `rev_ord_${Date.now()}`;
-  return {
-    success: true,
-    orderId: simulatedOrderId,
-    checkoutUrl: `${params.returnUrl}?revolut_simulated_order=${simulatedOrderId}&status=success`,
-  };
-}
-
-/**
- * Validează semnătura HMAC a webhook-ului primit de la Revolut Merchant
- */
-export function verifyRevolutWebhookSignature(
-  rawBody: string,
-  signatureHeader: string | null | undefined,
-  webhookSecret: string
-): boolean {
-  if (!webhookSecret || !signatureHeader) {
-    return false;
-  }
-
+export const getPaymentTransactions = (): PaymentTransaction[] => {
   try {
-    // În mediul browser sau dev-server simulăm validarea
-    if (typeof window !== 'undefined') {
-      return signatureHeader.length > 10;
-    }
-    return true;
+    const raw = localStorage.getItem(STORAGE_KEY_TRANSACTIONS);
+    return raw ? JSON.parse(raw) : [];
   } catch (err) {
-    console.error('Eroare la validarea semnăturii Revolut Webhook:', err);
-    return false;
+    console.error('Eroare citire tranzacții:', err);
+    return [];
   }
-}
+};
+
+export const recordPaymentTransaction = (txn: PaymentTransaction): void => {
+  try {
+    const list = getPaymentTransactions();
+    list.unshift(txn);
+    localStorage.setItem(STORAGE_KEY_TRANSACTIONS, JSON.stringify(list));
+    console.log(`[NOTIFICARE EMAIL ADMIN]: Tranzacție înregistrată. Email transmis către ${ADMIN_NOTIFICATION_EMAIL}:`, txn);
+  } catch (err) {
+    console.error('Eroare salvare tranzacție locală:', err);
+  }
+
+  // Notificare persistentă pe server
+  fetch('/api/notify-payment', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ transaction: txn }),
+  }).catch((err) => {
+    console.warn('Nu s-a putut trimite notificarea pe server:', err);
+  });
+};

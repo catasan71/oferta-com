@@ -728,6 +728,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 >
                   Alege Clasic (100 RON)
                 </button>
+
               </div>
             </motion.div>
           </div>

@@ -254,38 +254,49 @@ app.get('/api/revolut-order-status/:orderId', async (req, res) => {
   }
 });
 
-// 9. Transmitere factură proformă / fiscală către ambele părți (Client + Prestator)
-app.post('/api/send-proforma-email', async (req, res) => {
+// 9. Înregistrare plată și notificare email administrator
+app.post('/api/notify-payment', async (req, res) => {
   try {
-    const { proforma } = req.body;
-    if (!proforma || !proforma.serie_numar) {
-      return res.status(400).json({ success: false, error: 'Date proformă invalide' });
+    const { transaction } = req.body;
+    if (!transaction) {
+      return res.status(400).json({ success: false, error: 'Date tranzacție lipsă' });
     }
 
-    const clientEmail = proforma.client?.email || 'catalinsandu@protonmail.com';
-    const providerEmail = 'catalinsandu@protonmail.com';
-    const adminSecondaryEmail = 'catalinsandu07@gmail.com';
-
+    const adminEmail = 'catalinsandu07@gmail.com';
     const timestamp = new Date().toISOString();
 
-    console.log(`[EMAIL DISPATCH] Factura ${proforma.serie_numar} (${proforma.valoare} RON) a fost transmisă automat:`);
-    console.log(`  -> Către Cumpărător (Client): ${clientEmail}`);
-    console.log(`  -> Către Furnizor (Prestator): ${providerEmail}`);
-    console.log(`  -> Către Administrație: ${adminSecondaryEmail}`);
+    console.log(`=======================================================`);
+    console.log(`[NOTIFICARE PLATA REVOLUT DISPATCH -> ${adminEmail}]`);
+    console.log(`  Pachet achizitionat: ${transaction.planName} (${transaction.amount} ${transaction.currency || 'RON'})`);
+    console.log(`  Cumparator: ${transaction.buyerName} - ${transaction.buyerCompany}`);
+    console.log(`  Email Client: ${transaction.buyerEmail}`);
+    console.log(`  Telefon: ${transaction.buyerPhone}`);
+    console.log(`  ID Tranzactie: ${transaction.transactionNumber || transaction.id}`);
+    console.log(`  Data & Ora: ${timestamp}`);
+    console.log(`=======================================================`);
 
-    // Înregistrăm istoricul transmiterii
+    // Salvare istoric tranzacție pe server
+    const txnsFile = path.join(DATA_DIR, 'transactions.json');
+    let txns: any[] = [];
+    try {
+      if (fs.existsSync(txnsFile)) {
+        txns = JSON.parse(fs.readFileSync(txnsFile, 'utf-8'));
+      }
+    } catch (e) {}
+    txns.unshift({ ...transaction, server_timestamp: timestamp, notified_admin: adminEmail });
+    try {
+      fs.writeFileSync(txnsFile, JSON.stringify(txns, null, 2), 'utf-8');
+    } catch (e) {}
+
     return res.json({
       success: true,
-      serie_numar: proforma.serie_numar,
-      valoare: proforma.valoare,
-      transmis_client: clientEmail,
-      transmis_furnizor: providerEmail,
-      transmis_admin: adminSecondaryEmail,
-      data_transmiterii: timestamp,
-      status: 'SENT_BOTH_PARTIES',
+      message: `Notificare transmisă cu succes către ${adminEmail}`,
+      admin_email: adminEmail,
+      timestamp,
+      transaction,
     });
   } catch (err: any) {
-    console.error('Eroare transmitere proformă email:', err);
+    console.error('Eroare la notificarea plății:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
