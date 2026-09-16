@@ -1,16 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   FileText,
-  Download,
   Printer,
   ExternalLink,
   X,
-  CheckCircle2,
-  Loader2,
-  AlertCircle,
 } from 'lucide-react';
 import { Quote } from '../types.ts';
-import { exportQuoteToPdf } from '../lib/pdfExport.ts';
 
 interface PrintExportModalProps {
   quote: Quote;
@@ -21,36 +16,9 @@ interface PrintExportModalProps {
 
 export const PrintExportModal: React.FC<PrintExportModalProps> = ({
   quote,
-  elementId = 'quote-document-paper',
   onClose,
   onToast,
 }) => {
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [generatedPdf, setGeneratedPdf] = useState<{ blobUrl: string; fileName: string } | null>(null);
-
-  const handleGenerateAndDownload = async () => {
-    setIsGenerating(true);
-    setErrorMessage(null);
-    try {
-      const result = await exportQuoteToPdf(quote, elementId);
-      if (result.success && result.blobUrl && result.fileName) {
-        setGeneratedPdf({
-          blobUrl: result.blobUrl,
-          fileName: result.fileName,
-        });
-        onToast(`Documentul PDF (${result.fileName}) a fost generat și descărcat!`);
-      } else {
-        setErrorMessage(result.error || 'Nu s-a putut genera PDF-ul. Folosiți opțiunea de deschidere în filă nouă.');
-      }
-    } catch (err: any) {
-      console.error('Error generating PDF:', err);
-      setErrorMessage('A apărut o problemă la generarea PDF-ului. Vă recomandăm deschiderea în filă nouă.');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
   const handleNativePrint = () => {
     try {
       window.print();
@@ -77,13 +45,13 @@ export const PrintExportModal: React.FC<PrintExportModalProps> = ({
               <Printer className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-base">Tipărire & Salvare PDF A4</h3>
-              <p className="text-xs text-slate-300">Oferta #{quote.numar_oferta} • Format vizual fidel A4</p>
+              <h3 className="font-bold text-base">Tipărire &amp; Salvare PDF A4</h3>
+              <p className="text-xs text-slate-300">Oferta #{quote.numar_oferta} • Format vectorial A4</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -94,117 +62,44 @@ export const PrintExportModal: React.FC<PrintExportModalProps> = ({
           <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-xl flex items-start gap-3">
             <FileText className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
             <div className="text-xs text-blue-900 leading-relaxed">
-              <p className="font-bold mb-0.5">Format A4 Standard Profesional</p>
-              Documentul exportat păstrează cu fidelitate 100% designul văzut pe ecran: antetul companiei, diacriticele românești corecte, tabelul de prețuri, totalurile cu TVA și certificatul de audit electronic.
+              <p className="font-bold mb-0.5">Format A4 Vectorial Standard (Calitate Maximă)</p>
+              Documentul exportat păstrează cu fidelitate 100% designul oficial: antetul companiei, fonturile vectoriale clare, diacriticele românești corecte, tabelele de prețuri, totalurile cu TVA și certificatul de audit electronic.
             </div>
           </div>
 
-          {errorMessage && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-semibold flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>{errorMessage}</span>
-            </div>
-          )}
-
-          {/* Opțiunea 1: Salvează fișierul PDF A4 */}
-          <div className="border border-slate-200 rounded-xl p-4 hover:border-blue-400 transition-colors bg-white">
+          {/* Tipărire & Salvare PDF prin Browser */}
+          <div className="border border-slate-200 rounded-xl p-5 bg-white shadow-xs">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <Download className="w-4 h-4 text-blue-600" />
+                <Printer className="w-4 h-4 text-blue-600" />
                 <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                  Opțiunea 1: Descarcă fișierul PDF A4 (Design Ecran)
+                  Tipărire sau Salvare PDF prin Browser
                 </span>
               </div>
               <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-full">
-                Design Real
+                Recomandat
               </span>
             </div>
-            <p className="text-xs text-slate-500 mb-3">
-              Generează un fișier PDF identic la pixel cu oferta din aplicație, la rezoluție înaltă pentru arhivare sau transmitere către clienți.
+            <p className="text-xs text-slate-500 mb-4">
+              Deschide oferta în format nativ A4 de unde puteți alege <strong>„Save as PDF” / „Salvare ca PDF”</strong> sau trimite direct către imprimantă la rezoluție maximă.
             </p>
-
-            <button
-              onClick={handleGenerateAndDownload}
-              disabled={isGenerating}
-              className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] disabled:opacity-75 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Se capturează și se generează PDF-ul...
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4" />
-                  Descarcă PDF A4 acum
-                </>
-              )}
-            </button>
-
-            {/* Linkuri de siguranță după generare (în caz că browserul blochează declanșarea în iframe) */}
-            {generatedPdf && (
-              <div className="mt-3.5 p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2 animate-in fade-in duration-200">
-                <div className="flex items-center gap-2 text-emerald-800 font-bold text-xs">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span className="truncate">PDF generat cu succes: {generatedPdf.fileName}</span>
-                </div>
-                <p className="text-[11px] text-emerald-700 leading-normal">
-                  Dacă descărcarea automată nu a pornit din cauza ferestrei iframe, apăsați pe butoanele de mai jos:
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                  <a
-                    href={generatedPdf.blobUrl}
-                    download={generatedPdf.fileName}
-                    className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    Click pentru Salvare
-                  </a>
-                  <a
-                    href={generatedPdf.blobUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="py-2 px-3 bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-100 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Deschide PDF-ul în tab
-                  </a>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Opțiunea 2: Tipărire & Deschidere în filă nouă */}
-          <div className="border border-slate-200 rounded-xl p-4 hover:border-slate-300 transition-colors bg-slate-50/50">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Printer className="w-4 h-4 text-slate-700" />
-                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                  Opțiunea 2: Tipărire sau Salvare PDF prin Browser
-                </span>
-              </div>
-              <span className="text-[10px] bg-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded-full">
-                Print Nativ
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mb-3">
-              Deschide oferta direct în caseta de tipărire nativă a browserului, de unde puteți alege imprimanta fizică sau „Save as PDF”.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <button
+                type="button"
                 onClick={handleNativePrint}
-                className="py-2 px-3 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                className="py-2.5 px-3 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer"
               >
-                <Printer className="w-3.5 h-3.5 text-slate-500" />
+                <Printer className="w-4 h-4 text-slate-500" />
                 Tipărește direct
               </button>
 
               <button
+                type="button"
                 onClick={() => handleOpenInNewTab(true)}
-                className="py-2 px-3 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                className="py-2.5 px-3 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
                 title="Deschide pagina și pornește automat dialogul de salvare / print"
               >
-                <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
+                <ExternalLink className="w-4 h-4" />
                 Deschide cu dialog Print
               </button>
             </div>
@@ -214,6 +109,7 @@ export const PrintExportModal: React.FC<PrintExportModalProps> = ({
         {/* Subsol Modal */}
         <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end">
           <button
+            type="button"
             onClick={onClose}
             className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
           >
