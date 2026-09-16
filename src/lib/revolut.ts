@@ -61,38 +61,6 @@ export const SUBSCRIPTION_PLANS: Record<SubscriptionPlan, PlanConfig> = {
 export const ADMIN_NOTIFICATION_EMAIL = 'catalinsandu07@gmail.com';
 export const OPERATOR_PROVIDER_NAME = 'SANDU M.I. CĂTĂLIN PERSOANĂ FIZICĂ AUTORIZATĂ';
 
-// Link-uri implicite Revolut Checkout (pot fi modificate oricând din UI sau variabile)
-export const DEFAULT_REVOLUT_PAYMENT_LINK_STARTER = 
-  (typeof import.meta !== 'undefined' && (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_REVOLUT_LINK_STARTER) ||
-  'https://checkout.revolut.com/payment-link/3a483e5a-1c72-49f2-93e6-9342a524dced';
-
-export const DEFAULT_REVOLUT_PAYMENT_LINK_CLASIC = 
-  (typeof import.meta !== 'undefined' && (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_REVOLUT_LINK_CLASIC) ||
-  'https://checkout.revolut.com/payment-link/3a483e5a-1c72-49f2-93e6-9342a524dced';
-
-export const getRevolutPaymentLink = (plan: SubscriptionPlan): string => {
-  try {
-    if (plan === 'CLASIC') {
-      return localStorage.getItem('offerflow_revolut_link_clasic') || DEFAULT_REVOLUT_PAYMENT_LINK_CLASIC;
-    }
-    return localStorage.getItem('offerflow_revolut_link_starter') || DEFAULT_REVOLUT_PAYMENT_LINK_STARTER;
-  } catch {
-    return plan === 'CLASIC' ? DEFAULT_REVOLUT_PAYMENT_LINK_CLASIC : DEFAULT_REVOLUT_PAYMENT_LINK_STARTER;
-  }
-};
-
-export const setRevolutPaymentLink = (plan: SubscriptionPlan, url: string): void => {
-  try {
-    if (plan === 'CLASIC') {
-      localStorage.setItem('offerflow_revolut_link_clasic', url.trim());
-    } else {
-      localStorage.setItem('offerflow_revolut_link_starter', url.trim());
-    }
-  } catch (e) {
-    console.error('Eroare salvare link Revolut:', e);
-  }
-};
-
 export interface PaymentTransaction {
   id: string;
   transactionNumber: string;
@@ -132,12 +100,12 @@ export const recordPaymentTransaction = (txn: PaymentTransaction): void => {
     console.error('Eroare salvare tranzacție locală:', err);
   }
 
-  // Notificare persistentă pe server (dacă există backend activ)
+  // Notificare persistentă pe server / Vercel
   fetch('/api/notify-payment', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ transaction: txn }),
   }).catch((err) => {
-    console.warn('Nu s-a putut trimite notificarea pe server (mod static/Vercel):', err);
+    console.warn('Nu s-a putut trimite notificarea pe server:', err);
   });
 };
