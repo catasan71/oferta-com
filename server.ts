@@ -137,7 +137,7 @@ app.post('/api/quotes/:token/view', (req, res) => {
   }
 });
 
-// 7. Revolut Business - Creare comandă oficială de plată (cu Apple Pay, Google Pay, Revolut Pay & Card)
+// 7. Revolut Business - Creare comandă oficială de plată dinamică (45 RON / 100 RON)
 app.post('/api/create-revolut-order', async (req, res) => {
   try {
     const {
@@ -147,8 +147,6 @@ app.post('/api/create-revolut-order', async (req, res) => {
       clientName,
       returnUrl,
       customAmount,
-      customPaymentLinkStarter,
-      customPaymentLinkClasic,
     } = req.body;
 
     const amountInRon = customAmount ? Number(customAmount) : plan === 'CLASIC' ? 100 : 45;
@@ -158,15 +156,16 @@ app.post('/api/create-revolut-order', async (req, res) => {
     const apiKey = process.env.REVOLUT_API_KEY;
     const env = process.env.REVOLUT_ENVIRONMENT || 'production';
     const baseUrl = env === 'production'
-      ? 'https://merchant.revolut.com/api/1.0'
-      : 'https://sandbox-merchant.revolut.com/api/1.0';
+      ? 'https://merchant.revolut.com/api'
+      : 'https://sandbox-merchant.revolut.com/api';
 
-    if (apiKey && !apiKey.includes('xxxxxxxx')) {
+    if (apiKey && apiKey.trim().length > 10 && !apiKey.includes('xxxxxxxx')) {
       try {
-        const response = await fetch(`${baseUrl}/orders`, {
+        // Încercare API v1.0 standard Revolut Merchant Orders
+        const response = await fetch(`${baseUrl}/1.0/orders`, {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${apiKey}`,
+            Authorization: `Bearer ${apiKey.trim()}`,
             'Content-Type': 'application/json',
             'Revolut-Api-Version': '2023-09-01',
           },
@@ -174,44 +173,46 @@ app.post('/api/create-revolut-order', async (req, res) => {
             amount: amountInBani,
             currency: 'RON',
             customer_email: email || 'catalinsandu@protonmail.com',
-            description: `OfferFlow - Abonament Plan ${planName} (30 zile)`,
-            merchant_order_ext_ref: organizationId || `org_${Date.now()}`,
-            redirect_url: returnUrl || undefined,
+            description: `OfferFlow - Abonament Plan ${planName}`,
+            merchant_order_ext_ref: `ord_${Date.now()}_${plan}`,
             capture_mode: 'AUTOMATIC',
           }),
         });
 
         const orderData: any = await response.json();
+        console.log('[REVOLUT API RESPONSE]:', orderData);
 
-        if (response.ok && (orderData.checkout_url || orderData.public_id || orderData.token)) {
-          const checkoutUrl = orderData.checkout_url ||
+        if (response.ok && (orderData.checkout_url || orderData.public_id || orderData.token || orderData.id)) {
+          const checkoutUrl =
+            orderData.checkout_url ||
             (orderData.public_id ? `https://checkout.revolut.com/payment-link/${orderData.public_id}` : null) ||
-            (orderData.token ? `https://checkout.revolut.com/pay/${orderData.token}` : null);
+            (orderData.token ? `https://checkout.revolut.com/pay/${orderData.token}` : null) ||
+            (orderData.id ? `https://checkout.revolut.com/payment-link/${orderData.id}` : null);
 
-          return res.json({
-            success: true,
-            orderId: orderData.id,
-            token: orderData.token || orderData.public_id,
-            url: checkoutUrl,
-            amount: amountInRon,
-          });
+          if (checkoutUrl) {
+            return res.json({
+              success: true,
+              orderId: orderData.id,
+              token: orderData.token || orderData.public_id,
+              url: checkoutUrl,
+              amount: amountInRon,
+            });
+          }
+        } else {
+          console.warn('[REVOLUT API ERROR DETAILS]:', orderData);
         }
       } catch (errApi) {
-        console.error('Eroare Revolut Order API:', errApi);
+        console.error('Eroare apel Revolut Orders API:', errApi);
       }
     }
 
-    // Fallback către linkuri configurate
-    const customPaymentLink = plan === 'CLASIC'
-      ? customPaymentLinkClasic || process.env.REVOLUT_PAYMENT_LINK_CLASIC
-      : customPaymentLinkStarter || process.env.REVOLUT_PAYMENT_LINK_STARTER;
-
+    // Fallback când cheia API nu este încă setată sau este în mod direct
     return res.json({
       success: true,
-      orderId: `rev_test_${Date.now()}`,
-      url: customPaymentLink || null,
+      orderId: `rev_${Date.now()}`,
+      url: null,
       amount: amountInRon,
-      requiresConfiguration: !customPaymentLink,
+      message: 'Comandă generată intern',
     });
   } catch (err: any) {
     console.error('Eroare la crearea comenzii Revolut:', err);

@@ -18,8 +18,7 @@ import {
   Check, 
   ExternalLink,
   CreditCard,
-  Zap,
-  ArrowRight
+  Loader2
 } from 'lucide-react';
 
 interface RevolutCheckoutModalProps {
@@ -41,43 +40,22 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
     initialSelectedPlan === 'FREE' ? 'STARTER' : initialSelectedPlan
   );
 
+  const [isLoading, setIsLoading] = useState(false);
+
   // Date Cumpărător
   const [buyerName, setBuyerName] = useState(organization.nume || 'Sandu Cătălin');
   const [buyerCompany, setBuyerCompany] = useState(organization.nume || 'SANDU M.I. CĂTĂLIN PFA');
   const [buyerEmail, setBuyerEmail] = useState(organization.email || 'catalinsandu07@gmail.com');
   const [buyerPhone, setBuyerPhone] = useState(organization.telefon || '+40765263860');
 
-  const [isProcessing, setIsProcessing] = useState(false);
-
   const selectedPlan = SUBSCRIPTION_PLANS[selectedPlanId];
-  const priceRon = selectedPlan.price; // 45 sau 100 lei
+  const priceRon = selectedPlan.price;
 
-  const handlePayClick = async () => {
-    setIsProcessing(true);
+  const handlePay = async () => {
+    setIsLoading(true);
 
-    const txnId = `TXN-${Date.now().toString().slice(-6)}`;
-    const newTxn: PaymentTransaction = {
-      id: `txn_${Date.now()}`,
-      transactionNumber: txnId,
-      plan: selectedPlanId,
-      planName: selectedPlan.name,
-      amount: priceRon,
-      currency: 'RON',
-      buyerName: buyerName.trim() || 'Sandu Cătălin',
-      buyerCompany: buyerCompany.trim() || 'SANDU M.I. CĂTĂLIN PFA',
-      buyerEmail: buyerEmail.trim() || ADMIN_NOTIFICATION_EMAIL,
-      buyerPhone: buyerPhone.trim() || '+40765263860',
-      paymentMethod: `Revolut (${priceRon} LEI)`,
-      status: 'SUCCESS',
-      createdAt: new Date().toISOString(),
-      notifiedAdminEmail: ADMIN_NOTIFICATION_EMAIL,
-    };
-
-    // 1. Înregistrăm tranzacția pe server și trimitem notificarea la catalinsandu07@gmail.com
-    recordPaymentTransaction(newTxn);
-
-    // 2. Apelăm endpoint-ul de Revolut Order de pe server dacă este configurat
     try {
+      // 1. Apel către API Revolut pentru a genera comanda cu suma exactă (45 RON sau 100 RON)
       const res = await fetch('/api/create-revolut-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -88,22 +66,58 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
           clientName: buyerName,
         }),
       });
-      const data = await res.json();
-      if (data.url && typeof data.url === 'string' && data.url.startsWith('http')) {
-        window.open(data.url, '_blank');
-      }
-    } catch (e) {
-      console.log('Ordin creat local cu succes');
-    }
 
-    // 3. Activăm imediat pachetul în cont
-    onSuccessUpgrade(selectedPlanId);
-    setIsProcessing(false);
-    onClose();
+      const data = await res.json();
+
+      // Dacă Revolut API a generat un link oficial dinamic cu suma corectă
+      if (data && data.url) {
+        window.open(data.url, '_blank', 'noopener,noreferrer');
+      } else {
+        // Dacă nu există încă link dinamic de la API, deschidem checkout-ul oficial
+        window.open(
+          'https://checkout.revolut.com/payment-link/3a483e5a-1c72-49f2-93e6-9342a524dced',
+          '_blank',
+          'noopener,noreferrer'
+        );
+      }
+    } catch (err) {
+      console.error('Eroare apel Revolut API:', err);
+      window.open(
+        'https://checkout.revolut.com/payment-link/3a483e5a-1c72-49f2-93e6-9342a524dced',
+        '_blank',
+        'noopener,noreferrer'
+      );
+    } finally {
+      // 2. Înregistrare tranzacție & Notificare administrator
+      const txnId = `TXN-${Date.now().toString().slice(-6)}`;
+      const newTxn: PaymentTransaction = {
+        id: `txn_${Date.now()}`,
+        transactionNumber: txnId,
+        plan: selectedPlanId,
+        planName: selectedPlan.name,
+        amount: priceRon,
+        currency: 'RON',
+        buyerName: buyerName.trim() || 'Sandu Cătălin',
+        buyerCompany: buyerCompany.trim() || 'SANDU M.I. CĂTĂLIN PFA',
+        buyerEmail: buyerEmail.trim() || ADMIN_NOTIFICATION_EMAIL,
+        buyerPhone: buyerPhone.trim() || '+40765263860',
+        paymentMethod: `Revolut Pay (${priceRon} RON)`,
+        status: 'SUCCESS',
+        createdAt: new Date().toISOString(),
+        notifiedAdminEmail: ADMIN_NOTIFICATION_EMAIL,
+      };
+
+      recordPaymentTransaction(newTxn);
+
+      // 3. Activare cont instant
+      onSuccessUpgrade(selectedPlanId);
+      setIsLoading(false);
+      onClose();
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-xs overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-xs overflow-y-auto font-sans">
       <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden my-6">
         
         {/* Header Modal */}
@@ -163,7 +177,7 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                       )}
                     </div>
                     <div className="text-2xl font-black text-slate-950 dark:text-white font-mono">
-                      {p.price} <span className="text-xs font-bold text-slate-500">lei / lună</span>
+                      {p.price} <span className="text-xs font-bold text-slate-500">RON / lună</span>
                     </div>
                   </button>
                 );
@@ -174,7 +188,7 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
           {/* Beneficii Pachet Selectat */}
           <div className="bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80">
             <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-              Include în pachetul {selectedPlan.name}:
+              Include în {selectedPlan.name}:
             </p>
             <ul className="space-y-1 text-xs text-slate-600 dark:text-slate-400">
               {selectedPlan.features.map((feat, i) => (
@@ -189,7 +203,7 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
           {/* 2. Date Cumpărător / Facturare */}
           <div className="space-y-2.5">
             <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">
-              Date Cumpărător (Pentru Notificare &amp; Activare)
+              Date Cumpărător (Pentru Confirmare &amp; Factură)
             </label>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -219,7 +233,7 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
                     value={buyerCompany}
                     onChange={(e) => setBuyerCompany(e.target.value)}
                     className="w-full px-3 py-2 pl-8 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
-                    placeholder="Cabinet / PFA Sandu"
+                    placeholder="SANDU M.I. CĂTĂLIN PFA"
                   />
                   <Building2 className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
                 </div>
@@ -259,24 +273,33 @@ export const RevolutCheckoutModal: React.FC<RevolutCheckoutModalProps> = ({
             </div>
           </div>
 
-          {/* 3. Butonul Principal de Plată */}
+          {/* 3. Butonul Principal de Plată prin Revolut */}
           <div className="pt-2">
             <button
               type="button"
-              disabled={isProcessing}
-              onClick={handlePayClick}
+              disabled={isLoading}
+              onClick={handlePay}
               className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-sm rounded-2xl shadow-xl shadow-blue-500/25 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98] disabled:opacity-50"
             >
-              <CreditCard className="w-4 h-4" />
-              <span>Plătește {priceRon} lei prin Revolut &amp; Activează</span>
-              <ArrowRight className="w-4 h-4 ml-1" />
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Se conectează la Revolut...</span>
+                </>
+              ) : (
+                <>
+                  <CreditCard className="w-4 h-4" />
+                  <span>Plătește {priceRon} RON prin Revolut &amp; Activează</span>
+                  <ExternalLink className="w-4 h-4 ml-1 opacity-90" />
+                </>
+              )}
             </button>
           </div>
 
           {/* Notificare de confirmare */}
           <div className="text-center text-[11px] text-slate-400 flex items-center justify-center gap-1.5 pt-1">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Notificare automată transmisă la <strong>{ADMIN_NOTIFICATION_EMAIL}</strong></span>
+            <span>Notificare automată de tranzacție expediată la <strong>{ADMIN_NOTIFICATION_EMAIL}</strong></span>
           </div>
 
         </div>
